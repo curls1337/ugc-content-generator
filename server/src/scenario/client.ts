@@ -18,8 +18,9 @@ export class ScenarioClient {
    * List available Scenario models.
    * GET /v1/models
    */
-  async listModels(): Promise<any> {
-    const response = await this.request('GET', '/v1/models');
+  async listModels(privacy?: 'private' | 'public'): Promise<any> {
+    const query = privacy ? `?privacy=${privacy}&pageSize=100` : '?pageSize=100';
+    const response = await this.request('GET', `/v1/models${query}`);
     return response;
   }
 

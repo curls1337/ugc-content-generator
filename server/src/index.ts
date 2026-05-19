@@ -314,9 +314,14 @@ app.get('/api/models', async (req, res) => {
     }
 
     const client = new ScenarioClient(apiKey, apiSecret);
-    const result = await client.listModels();
+    // Fetch both private (custom) and public (built-in) models
+    const [privateResult, publicResult] = await Promise.all([
+      client.listModels('private').catch(() => ({ models: [] })),
+      client.listModels('public').catch(() => ({ models: [] })),
+    ]);
+    const allModels = [...(privateResult.models ?? []), ...(publicResult.models ?? [])];
 
-    res.json({ success: true, models: result.models ?? result });
+    res.json({ success: true, models: allModels });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'Failed to fetch models' });
   }

@@ -217,7 +217,6 @@ export default function GeneratePage() {
     listModels(scenarioApiKey, scenarioApiSecret).then((data: any) => {
       if (data.success && data.models) {
         const models = data.models
-          .filter((m: any) => m.custom === true && m.status === 'trained')
           .map((m: any) => ({ id: m.id, name: m.name || m.id, capabilities: m.capabilities || [] }));
         setAvailableModels(models);
         // Set defaults
