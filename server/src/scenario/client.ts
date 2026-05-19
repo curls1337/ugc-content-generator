@@ -33,7 +33,7 @@ export class ScenarioClient {
     numOutputs: number;
     width: number;
     height: number;
-    referenceImages?: string[];
+    startImageAssetId?: string;
   }): Promise<{ jobId: string }> {
     const body: Record<string, unknown> = {
       prompt: params.prompt,
@@ -42,12 +42,12 @@ export class ScenarioClient {
       height: params.height,
     };
 
-    if (params.referenceImages && params.referenceImages.length > 0) {
-      body.referenceImages = params.referenceImages;
+    if (params.startImageAssetId) {
+      body.image = params.startImageAssetId;
     }
 
     const response = await this.request('POST', `/v1/generate/custom/${params.modelId}`, body);
-    return { jobId: response.job?.id ?? response.jobId ?? response.id };
+    return { jobId: response.job?.id ?? response.job?.jobId ?? response.jobId ?? response.id };
   }
 
   /**
@@ -59,7 +59,7 @@ export class ScenarioClient {
     prompt: string;
     duration: number;
     aspectRatio: string;
-    referenceImages?: string[];
+    startImageAssetId?: string;
   }): Promise<{ jobId: string }> {
     const body: Record<string, unknown> = {
       prompt: params.prompt,
@@ -67,12 +67,26 @@ export class ScenarioClient {
       aspectRatio: params.aspectRatio,
     };
 
-    if (params.referenceImages && params.referenceImages.length > 0) {
-      body.referenceImages = params.referenceImages;
+    if (params.startImageAssetId) {
+      body.startImage = params.startImageAssetId;
     }
 
     const response = await this.request('POST', `/v1/generate/custom/${params.modelId}`, body);
-    return { jobId: response.job?.id ?? response.jobId ?? response.id };
+    return { jobId: response.job?.id ?? response.job?.jobId ?? response.jobId ?? response.id };
+  }
+
+  /**
+   * Upload an image (base64) to get an assetId.
+   * POST /v1/assets
+   */
+  async uploadImage(base64Image: string, name?: string): Promise<string> {
+    const body: Record<string, unknown> = {
+      image: base64Image,
+    };
+    if (name) body.name = name;
+
+    const response = await this.request('POST', '/v1/assets', body);
+    return response.asset?.id ?? response.assetId ?? response.id;
   }
 
   /**
