@@ -10,27 +10,33 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy all package files first for better caching
-COPY package.json package-lock.json ./
-COPY client/package.json ./client/
-COPY server/package.json ./server/
-COPY shared/package.json ./shared/
-
-# Install dependencies
-RUN npm install
-
-# Copy source code
+# Copy everything
 COPY . .
 
-# Build client (Vite produces static files in client/dist)
-RUN npm run build:client
+# Install root dependencies
+RUN npm install
+
+# Install client dependencies
+WORKDIR /app/client
+RUN npm install
+
+# Install server dependencies
+WORKDIR /app/server
+RUN npm install
+
+# Build client with Vite only (skip tsc)
+WORKDIR /app/client
+RUN npx vite build
 
 # Install Playwright Chromium
+WORKDIR /app
 RUN npx playwright install chromium
 
 # Expose port
 ENV PORT=8080
 EXPOSE 8080
 
-# Start server with tsx (serves API + static client files)
+WORKDIR /app
+
+# Start server with tsx
 CMD ["npx", "tsx", "server/src/index.ts"]
