@@ -97,10 +97,28 @@ export class ScenarioClient {
     const response = await this.request('GET', `/v1/jobs/${jobId}`);
     const job = response.job ?? response;
 
-    // Extract asset IDs/URLs from result.images when job is success
-    let assetIds: string[] = job.assetIds ?? job.metadata?.assetIds ?? [];
-    if (job.status === 'success' && job.result?.images?.length) {
-      assetIds = job.result.images.map((img: any) => img.assetId ?? img.id ?? img.url);
+    // Extract asset IDs/URLs - try multiple locations in the response
+    let assetIds: string[] = [];
+    
+    // 1. Check metadata.assetIds (most common for completed jobs)
+    if (job.metadata?.assetIds?.length) {
+      assetIds = job.metadata.assetIds;
+    }
+    // 2. Check top-level assetIds
+    else if (job.assetIds?.length) {
+      assetIds = job.assetIds;
+    }
+    // 3. Check result.images array (contains URLs or asset objects)
+    else if (job.result?.images?.length) {
+      assetIds = job.result.images.map((img: any) => img.assetId ?? img.id ?? img.url).filter(Boolean);
+    }
+    // 4. Check result.asset (single asset)
+    else if (job.result?.asset) {
+      assetIds = [job.result.asset.id ?? job.result.asset.url];
+    }
+    // 5. Check result.url directly
+    else if (job.result?.url) {
+      assetIds = [job.result.url];
     }
 
     return {

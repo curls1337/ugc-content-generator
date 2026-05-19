@@ -26,9 +26,7 @@ export function useJobPoller(): void {
   const addSession = useAppStore((s) => s.addSession);
 
   useEffect(() => {
-    // Only poll when there's an active job and generation is in progress
     if (!activeJobId || !isGenerating) {
-      // Clean up any existing interval
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -37,7 +35,6 @@ export function useJobPoller(): void {
     }
 
     const poll = async () => {
-      // Prevent overlapping polls
       if (isPollingRef.current) return;
       isPollingRef.current = true;
 
@@ -45,14 +42,12 @@ export function useJobPoller(): void {
         const data = await pollJob(activeJobId, scenarioApiKey, scenarioApiSecret);
 
         if (!data.success || !data.job) {
-          // Transient error — keep polling
           return;
         }
 
         const job = data.job;
         setJobStatus(job);
 
-        // Check for terminal status
         if (job.status === 'success' || job.status === 'failed' || job.status === 'canceled') {
           setIsGenerating(false);
 
@@ -61,50 +56,75 @@ export function useJobPoller(): void {
             pollRef.current = null;
           }
 
-          // On success, create a gallery session from the generated assets
-          if (job.status === 'success' && job.assetIds.length > 0) {
+          // On success, create gallery session
+          if (job.status === 'success') {
             try {
-              const items: GeneratedContent[] = await Promise.all(
-                job.assetIds.map(async (assetId) => {
-                  const asset = await getAsset(assetId, scenarioApiKey, scenarioApiSecret);
-                  return {
-                    id: assetId,
-                    assetId,
-                    type: mode,
-                    url: asset.url || '',
-                    prompt: prompts[0] || '',
-                    width: 1080,
-                    height: 1920,
-                    createdAt: Date.now(),
-                  };
-                })
-              );
+              let items: GeneratedContent[] = [];
 
-              const session: GenerationSession = {
-                id: activeJobId,
-                productTitle: productData?.title || 'Untitled',
-                mode,
-                items,
-                createdAt: Date.now(),
-              };
+              if (job.assetIds && job.assetIds.length > 0) {
+                // Try to fetch each asset URL
+                items = await Promise.all(
+                  job.assetIds.map(async (assetId: string) => {
+                    try {
+                      const asset = await getAsset(assetId, scenarioApiKey, scenarioApiSecret);
+                      return {
+                        id: assetId,
+                        assetId,
+                        type: mode,
+                        url: asset.url || '',
+                        prompt: prompts[0] || '',
+                        width: 1080,
+                        height: 1920,
+                        createdAt: Date.now(),
+                      };
+                    } catch {
+                      // If asset is actually a URL already (not an ID), use it directly
+                      const isUrl = assetId.startsWith('http');
+                      return {
+                        id: assetId,
+                        assetId,
+                        type: mode,
+                        url: isUrl ? assetId : '',
+                        prompt: prompts[0] || '',
+                        width: 1080,
+                        height: 1920,
+                        createdAt: Date.now(),
+                      };
+                    }
+                  })
+                );
+                // Filter out items with no URL
+                items = items.filter((item) => item.url !== '');
+              }
 
-              addSession(session);
-            } catch {
-              // Asset fetch failed — session won't be added but job status is already updated
+              // If we got items, add session
+              if (items.length > 0) {
+                const session: GenerationSession = {
+                  id: activeJobId,
+                  productTitle: productData?.title || 'Untitled',
+                  mode,
+                  items,
+                  createdAt: Date.now(),
+                };
+                addSession(session);
+              } else {
+                // No asset IDs but job succeeded — create a placeholder session
+                // This can happen if the response format is different
+                console.warn('[useJobPoller] Job succeeded but no assets found in response');
+              }
+            } catch (err) {
+              console.error('[useJobPoller] Failed to create gallery session:', err);
             }
           }
         }
       } catch {
-        // Network error during polling — keep trying on next interval
+        // Network error — keep trying
       } finally {
         isPollingRef.current = false;
       }
     };
 
-    // Start polling interval
     pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
-
-    // Also poll immediately on mount/activation
     poll();
 
     return () => {
