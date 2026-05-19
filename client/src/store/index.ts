@@ -84,9 +84,9 @@ export const useAppStore = create<AppStore>()(
       // Product slice - initial state
       ...initialProductState,
 
-      setProductData: (data) => set({ productData: data }),
-      setSelectedImages: (images) => set({ selectedImages: images }),
-      toggleImageSelection: (imageUrl) => {
+      setProductData: (data: ProductData | null) => set({ productData: data }),
+      setSelectedImages: (images: string[]) => set({ selectedImages: images }),
+      toggleImageSelection: (imageUrl: string) => {
         const { selectedImages } = get();
         const isSelected = selectedImages.includes(imageUrl);
 
@@ -100,37 +100,37 @@ export const useAppStore = create<AppStore>()(
           set({ selectedImages: [...selectedImages, imageUrl] });
         }
       },
-      setScrapeLoading: (loading) => set({ isScrapingLoading: loading }),
-      setScrapeError: (error) => set({ scrapeError: error }),
+      setScrapeLoading: (loading: boolean) => set({ isScrapingLoading: loading }),
+      setScrapeError: (error: string | null) => set({ scrapeError: error }),
 
       // Generation slice - initial state
       ...initialGenerationState,
 
-      setMode: (mode) => set({ mode }),
-      setVideoDuration: (duration) => set({ videoDuration: duration }),
-      setPrompts: (prompts) => set({ prompts }),
-      setAnalysis: (analysis) => set({ analysis }),
-      setActiveJobId: (jobId) => set({ activeJobId: jobId }),
-      setJobStatus: (status) => set({ jobStatus: status }),
-      setIsGenerating: (generating) => set({ isGenerating: generating }),
-      setGenerateError: (error) => set({ generateError: error }),
+      setMode: (mode: 'image' | 'video') => set({ mode }),
+      setVideoDuration: (duration: number) => set({ videoDuration: duration }),
+      setPrompts: (prompts: string[]) => set({ prompts }),
+      setAnalysis: (analysis: ProductAnalysis | null) => set({ analysis }),
+      setActiveJobId: (jobId: string | null) => set({ activeJobId: jobId }),
+      setJobStatus: (status: JobStatus | null) => set({ jobStatus: status }),
+      setIsGenerating: (generating: boolean) => set({ isGenerating: generating }),
+      setGenerateError: (error: string | null) => set({ generateError: error }),
 
       // Gallery slice
       sessions: [],
-      addSession: (session) =>
-        set((state) => ({ sessions: [session, ...state.sessions] })),
+      addSession: (session: GenerationSession) =>
+        set((state: AppStore) => ({ sessions: [session, ...state.sessions] })),
 
       // Settings slice
       geminiKeys: [],
-      geminiModel: 'gemini-2.5-flash',
+      geminiModel: 'gemini-2.5-flash' as GeminiModelChoice,
       scenarioApiKey: '',
       scenarioApiSecret: '',
       scenarioKeyValid: false,
-      setGeminiKeys: (keys) => set({ geminiKeys: keys }),
-      setGeminiModel: (model) => set({ geminiModel: model }),
-      setScenarioApiKey: (key) => set({ scenarioApiKey: key }),
-      setScenarioApiSecret: (secret) => set({ scenarioApiSecret: secret }),
-      setScenarioKeyValid: (valid) => set({ scenarioKeyValid: valid }),
+      setGeminiKeys: (keys: ApiKeyEntry[]) => set({ geminiKeys: keys }),
+      setGeminiModel: (model: GeminiModelChoice) => set({ geminiModel: model }),
+      setScenarioApiKey: (key: string) => set({ scenarioApiKey: key }),
+      setScenarioApiSecret: (secret: string) => set({ scenarioApiSecret: secret }),
+      setScenarioKeyValid: (valid: boolean) => set({ scenarioKeyValid: valid }),
 
       // Reset actions
       resetProduct: () => set(initialProductState),
