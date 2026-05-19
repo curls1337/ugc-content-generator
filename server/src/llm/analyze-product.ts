@@ -1,4 +1,4 @@
-import type { ProductData, ProductAnalysis } from "../../shared/src/types";
+import type { ProductData, ProductAnalysis } from "../../../shared/src/types";
 import { getGeminiByKey, fetchImageAsBase64, safeParseJson } from "./gemini";
 import { withGeminiRetry } from "../utils/key-rotator";
 

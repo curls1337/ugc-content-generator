@@ -1,7 +1,7 @@
-import { detectPlatform } from '../../shared/src/utils/platform-detection';
+import { detectPlatform } from '../../../shared/src/utils/platform-detection';
 import { scrapeTokopedia } from './tokopedia';
 import { scrapeShopee } from './shopee';
-import type { ProductData } from '../../shared/src/types';
+import type { ProductData } from '../../../shared/src/types';
 
 /**
  * Scrapes product data from a given URL by detecting the platform

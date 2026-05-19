@@ -1,5 +1,5 @@
 import { ScenarioClient } from './client';
-import type { JobStatus } from '../../shared/src/types';
+import type { JobStatus } from '../../../shared/src/types';
 
 export interface PollJobParams {
   apiKey: string;

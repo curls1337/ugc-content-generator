@@ -1,4 +1,4 @@
-import type { ProductData } from "../../shared/src/types";
+import type { ProductData } from "../../../shared/src/types";
 import { getBrowser, UA } from "./browser";
 
 export async function scrapeTokopedia(url: string): Promise<ProductData> {
