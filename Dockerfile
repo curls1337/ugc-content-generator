@@ -38,5 +38,5 @@ EXPOSE 8080
 
 WORKDIR /app
 
-# Start server with tsx
-CMD ["npx", "tsx", "server/src/index.ts"]
+# Start server with tsx using tsconfig paths
+CMD ["npx", "tsx", "--tsconfig", "server/tsconfig.json", "server/src/index.ts"]

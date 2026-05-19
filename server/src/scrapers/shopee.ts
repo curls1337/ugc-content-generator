@@ -1,4 +1,4 @@
-import type { ProductData } from "../../../shared/src/types";
+import type { ProductData } from "@shared/types";
 import { getBrowser, UA } from "./browser";
 
 /**

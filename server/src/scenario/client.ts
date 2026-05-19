@@ -1,4 +1,4 @@
-import type { JobStatus } from '../../../shared/src/types';
+import type { JobStatus } from '@shared/types';
 
 /**
  * Scenario API client for image and video generation.
