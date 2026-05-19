@@ -24,6 +24,9 @@ RUN npm install
 WORKDIR /app/server
 RUN npm install
 
+# Build server with esbuild (resolves path aliases, no __name issue)
+RUN npm run bundle
+
 # Build client with Vite only (skip tsc)
 WORKDIR /app/client
 RUN npx vite build
@@ -38,5 +41,5 @@ EXPOSE 8080
 
 WORKDIR /app
 
-# Start server with tsx using tsconfig paths
-CMD ["npx", "tsx", "--tsconfig", "server/tsconfig.json", "server/src/index.ts"]
+# Start bundled server with node (not tsx)
+CMD ["node", "server/dist/index.mjs"]
