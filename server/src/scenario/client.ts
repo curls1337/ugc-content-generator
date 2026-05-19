@@ -25,7 +25,7 @@ export class ScenarioClient {
 
   /**
    * Start an image generation job.
-   * POST /v1/generate
+   * POST /v1/generate/custom/{modelId}
    */
   async generateImage(params: {
     modelId: string;
@@ -36,25 +36,23 @@ export class ScenarioClient {
     referenceImages?: string[];
   }): Promise<{ jobId: string }> {
     const body: Record<string, unknown> = {
-      modelId: params.modelId,
       prompt: params.prompt,
       numOutputs: params.numOutputs,
       width: params.width,
       height: params.height,
-      type: 'image',
     };
 
     if (params.referenceImages && params.referenceImages.length > 0) {
       body.referenceImages = params.referenceImages;
     }
 
-    const response = await this.request('POST', '/v1/generate', body);
-    return { jobId: response.jobId ?? response.job?.jobId ?? response.id };
+    const response = await this.request('POST', `/v1/generate/custom/${params.modelId}`, body);
+    return { jobId: response.job?.id ?? response.jobId ?? response.id };
   }
 
   /**
    * Start a video generation job.
-   * POST /v1/generate
+   * POST /v1/generate/custom/{modelId}
    */
   async generateVideo(params: {
     modelId: string;
@@ -64,19 +62,17 @@ export class ScenarioClient {
     referenceImages?: string[];
   }): Promise<{ jobId: string }> {
     const body: Record<string, unknown> = {
-      modelId: params.modelId,
       prompt: params.prompt,
       duration: params.duration,
       aspectRatio: params.aspectRatio,
-      type: 'video',
     };
 
     if (params.referenceImages && params.referenceImages.length > 0) {
       body.referenceImages = params.referenceImages;
     }
 
-    const response = await this.request('POST', '/v1/generate', body);
-    return { jobId: response.jobId ?? response.job?.jobId ?? response.id };
+    const response = await this.request('POST', `/v1/generate/custom/${params.modelId}`, body);
+    return { jobId: response.job?.id ?? response.jobId ?? response.id };
   }
 
   /**
@@ -85,15 +81,22 @@ export class ScenarioClient {
    */
   async getJob(jobId: string): Promise<JobStatus> {
     const response = await this.request('GET', `/v1/jobs/${jobId}`);
+    const job = response.job ?? response;
+
+    // Extract asset IDs/URLs from result.images when job is success
+    let assetIds: string[] = job.assetIds ?? job.metadata?.assetIds ?? [];
+    if (job.status === 'success' && job.result?.images?.length) {
+      assetIds = job.result.images.map((img: any) => img.assetId ?? img.id ?? img.url);
+    }
 
     return {
-      jobId: response.job?.jobId ?? response.jobId ?? jobId,
-      status: response.job?.status ?? response.status ?? 'queued',
-      progress: response.job?.progress ?? response.progress ?? 0,
-      assetIds: response.job?.assetIds ?? response.assetIds ?? [],
-      error: response.job?.error ?? response.error,
-      createdAt: response.job?.createdAt ?? response.createdAt ?? '',
-      updatedAt: response.job?.updatedAt ?? response.updatedAt ?? '',
+      jobId: job.id ?? job.jobId ?? jobId,
+      status: job.status ?? 'queued',
+      progress: job.progress ?? 0,
+      assetIds,
+      error: job.error ?? undefined,
+      createdAt: job.createdAt ?? '',
+      updatedAt: job.updatedAt ?? '',
     };
   }
 
