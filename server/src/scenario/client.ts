@@ -148,6 +148,22 @@ export class ScenarioClient {
   }
 
   /**
+   * List recent assets (generated images/videos).
+   * GET /v1/assets
+   */
+  async listAssets(params?: { pageSize?: number; type?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params?.type) query.set('type', params.type);
+    query.set('sortBy', 'createdAt');
+    query.set('sortDirection', 'desc');
+
+    const qs = query.toString();
+    const response = await this.request('GET', `/v1/assets${qs ? '?' + qs : ''}`);
+    return response.assets ?? [];
+  }
+
+  /**
    * Validate the API credentials by attempting to list models.
    * Returns { valid: true } on success, or { valid: false, error } on failure.
    */

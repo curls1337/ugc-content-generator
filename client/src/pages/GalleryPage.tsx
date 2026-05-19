@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Download,
@@ -349,29 +349,90 @@ function EmptyState() {
 // --- GalleryPage Component ---
 
 export default function GalleryPage() {
-  const { sessions } = useAppStore();
+  const { sessions, scenarioApiKey, scenarioApiSecret } = useAppStore();
   const sortedSessions = sortSessionsDescending(sessions);
+  const [scenarioAssets, setScenarioAssets] = useState<any[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+
+  const fetchScenarioAssets = useCallback(async () => {
+    if (!scenarioApiKey || !scenarioApiSecret) return;
+    setLoadingAssets(true);
+    try {
+      const { listGeneratedAssets } = await import('../api/client');
+      const result = await listGeneratedAssets(scenarioApiKey, scenarioApiSecret, 20);
+      if (result.success && result.assets) {
+        setScenarioAssets(result.assets);
+      }
+    } catch {}
+    setLoadingAssets(false);
+  }, [scenarioApiKey, scenarioApiSecret]);
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Content Gallery</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          View and download your generated content.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Content Gallery</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            View and download your generated content.
+          </p>
+        </div>
+        {scenarioApiKey && (
+          <button
+            onClick={fetchScenarioAssets}
+            disabled={loadingAssets}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm hover:bg-zinc-700 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loadingAssets ? 'animate-spin' : ''}`} />
+            Fetch from Scenario
+          </button>
+        )}
       </div>
 
-      {/* Content */}
-      {sortedSessions.length === 0 ? (
+      {/* Scenario Assets (fetched directly from API) */}
+      {scenarioAssets.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold text-zinc-200">Recent Scenario Assets</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {scenarioAssets.map((asset: any) => (
+              <div key={asset.id} className="rounded-xl border border-zinc-800 bg-surface overflow-hidden">
+                {asset.kind === 'video' || asset.mimeType?.startsWith('video') ? (
+                  <VideoPlayer src={asset.url} />
+                ) : (
+                  <img src={asset.url} alt="" className="w-full aspect-[9/16] object-cover bg-zinc-900" loading="lazy" />
+                )}
+                <div className="p-3">
+                  <p className="text-[10px] text-zinc-500 mb-1">{new Date(asset.createdAt).toLocaleString()}</p>
+                  {asset.metadata?.prompt && (
+                    <p className="text-xs text-zinc-400 line-clamp-2">{asset.metadata.prompt}</p>
+                  )}
+                  <a
+                    href={asset.url}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-xs font-medium transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Local sessions */}
+      {sortedSessions.length === 0 && scenarioAssets.length === 0 ? (
         <EmptyState />
-      ) : (
+      ) : sortedSessions.length > 0 ? (
         <div className="space-y-10">
           {sortedSessions.map((session) => (
             <SessionGroup key={session.id} session={session} />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -211,6 +211,31 @@ app.get('/api/assets/:assetId', async (req, res) => {
   }
 });
 
+// GET /api/assets — List recent generated assets
+app.get('/api/assets', async (req, res) => {
+  try {
+    const { apiKey, apiSecret, pageSize, type } = req.query as { apiKey: string; apiSecret: string; pageSize?: string; type?: string };
+
+    if (!apiKey || !apiSecret) {
+      res.status(400).json({
+        success: false,
+        error: 'apiKey and apiSecret query parameters are required',
+      });
+      return;
+    }
+
+    const client = new ScenarioClient(apiKey, apiSecret);
+    const assets = await client.listAssets({ 
+      pageSize: pageSize ? parseInt(pageSize) : 20,
+      type: type || undefined 
+    });
+
+    res.json({ success: true, assets });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'Failed to list assets' });
+  }
+});
+
 // POST /api/settings/validate-gemini — Validate a Gemini API key
 app.post('/api/settings/validate-gemini', async (req, res) => {
   try {

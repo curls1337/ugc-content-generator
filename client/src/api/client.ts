@@ -209,3 +209,24 @@ export async function listModels(apiKey: string, apiSecret: string): Promise<any
     };
   }
 }
+
+/**
+ * List recent generated assets from Scenario.
+ */
+export async function listGeneratedAssets(apiKey: string, apiSecret: string, pageSize?: number): Promise<{ success: boolean; assets?: any[]; error?: string }> {
+  try {
+    const params = new URLSearchParams({ apiKey, apiSecret });
+    if (pageSize) params.set('pageSize', String(pageSize));
+    const response = await fetch(`${API_BASE}/api/assets?${params.toString()}`);
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: `Server error: ${response.status}` };
+    }
+    return data;
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? `Network error: ${err.message}` : 'An unexpected network error occurred.',
+    };
+  }
+}
