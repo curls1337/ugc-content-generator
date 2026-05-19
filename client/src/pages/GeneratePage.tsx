@@ -167,6 +167,29 @@ export default function GeneratePage() {
   const startTimeRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
+  const [imageModel, setImageModel] = useState('model_bfl-flux-2-dev');
+  const [videoModel, setVideoModel] = useState('model_kling-v2-1-i2v');
+
+  // Available models
+  const IMAGE_MODELS = [
+    { id: 'model_bfl-flux-2-dev', name: 'Flux 2 Dev (BFL)' },
+    { id: 'model_bfl-flux-2-schnell', name: 'Flux 2 Schnell (Fast)' },
+    { id: 'model_imagen4-ultra', name: 'Imagen 4 Ultra (Google)' },
+    { id: 'model_imagen4-fast', name: 'Imagen 4 Fast (Google)' },
+    { id: 'model_gpt-image-1', name: 'GPT Image 1 (OpenAI)' },
+    { id: 'model_ideogram-v3', name: 'Ideogram V3' },
+    { id: 'model_recraft-v3', name: 'Recraft V3' },
+  ];
+
+  const VIDEO_MODELS = [
+    { id: 'model_kling-v2-1-i2v', name: 'Kling 2.1 I2V (Image to Video)' },
+    { id: 'model_kling-v2-1-t2v', name: 'Kling 2.1 T2V (Text to Video)' },
+    { id: 'model_kling-v2-6-t2v', name: 'Kling 2.6 T2V' },
+    { id: 'model_minimax-video-01', name: 'MiniMax Video 01' },
+    { id: 'model_veo3', name: 'Veo 3 (Google)' },
+    { id: 'model_wan-2-1-i2v', name: 'Wan 2.1 I2V' },
+    { id: 'model_wan-2-1-t2v', name: 'Wan 2.1 T2V' },
+  ];
 
   const {
     productData,
@@ -323,13 +346,13 @@ export default function GeneratePage() {
     let data: { success: boolean; jobId?: string; error?: string };
 
     if (mode === 'image') {
-      addLog('info', `Starting image generation with model: model_bfl-flux-2-dev`);
+      addLog('info', `Starting image generation with model: ${imageModel}`);
       addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
       addLog('info', `Reference images: ${selectedImages.length}`);
       data = await generateImage({
         prompt,
         referenceImages: selectedImages.slice(0, 5),
-        modelId: 'model_bfl-flux-2-dev',
+        modelId: imageModel,
         numOutputs: 2,
         width: 1080,
         height: 1920,
@@ -337,13 +360,13 @@ export default function GeneratePage() {
         scenarioApiSecret,
       });
     } else {
-      addLog('info', `Starting video generation with model: model_kling-v2-6-t2v-pro`);
+      addLog('info', `Starting video generation with model: ${videoModel}`);
       addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
       addLog('info', `Duration: ${videoDuration}s, Reference images: ${selectedImages.length}`);
       data = await generateVideo({
         prompt,
         referenceImages: selectedImages.slice(0, 10),
-        modelId: 'model_kling-v2-6-t2v-pro',
+        modelId: videoModel,
         duration: videoDuration,
         aspectRatio: '9:16',
         scenarioApiKey,
@@ -410,6 +433,29 @@ export default function GeneratePage() {
         <div className="p-5 space-y-4">
           <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Mode</h2>
           <ModeToggle mode={mode} onModeChange={setMode} disabled={isGenerating} />
+
+          {/* Model Selector */}
+          <div className="space-y-2">
+            <label htmlFor="model-select" className="text-sm font-medium text-zinc-300">
+              AI Model
+            </label>
+            <select
+              id="model-select"
+              value={mode === 'image' ? imageModel : videoModel}
+              onChange={(e) => mode === 'image' ? setImageModel(e.target.value) : setVideoModel(e.target.value)}
+              disabled={isGenerating}
+              className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {(mode === 'image' ? IMAGE_MODELS : VIDEO_MODELS).map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-zinc-500">
+              {mode === 'image' 
+                ? 'Choose the AI model for image generation. Some models may require a higher plan.'
+                : 'Choose the AI model for video generation. I2V models use a reference image, T2V is text-only.'}
+            </p>
+          </div>
 
           {mode === 'video' && (
             <DurationSlider
