@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { scrapeProduct } from './scrapers';
 import { analyzeProduct } from './llm/analyze-product';
 import { generatePrompts } from './llm/prompt-generator';
@@ -293,6 +295,14 @@ app.get('/api/models', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'Failed to fetch models' });
   }
+});
+
+// Serve static client files in production
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(__dirname, '../../client/dist');
+app.use(express.static(clientDist));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(clientDist, 'index.html'));
 });
 
 app.listen(PORT, () => {
