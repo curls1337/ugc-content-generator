@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { generatePrompts, generateImage, generateVideo, pollJob as pollJobApi } from '../api/client';
+import { addLog } from '../components/LogPanel';
 import type { JobStatus } from '@shared/types';
 
 const POLL_INTERVAL_MS = 7000;
@@ -322,6 +323,9 @@ export default function GeneratePage() {
     let data: { success: boolean; jobId?: string; error?: string };
 
     if (mode === 'image') {
+      addLog('info', `Starting image generation with model: model_bfl-flux-2-dev`);
+      addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
+      addLog('info', `Reference images: ${selectedImages.length}`);
       data = await generateImage({
         prompt,
         referenceImages: selectedImages.slice(0, 5),
@@ -333,10 +337,13 @@ export default function GeneratePage() {
         scenarioApiSecret,
       });
     } else {
+      addLog('info', `Starting video generation with model: model_kling-v2-6-t2v-pro`);
+      addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
+      addLog('info', `Duration: ${videoDuration}s, Reference images: ${selectedImages.length}`);
       data = await generateVideo({
         prompt,
         referenceImages: selectedImages.slice(0, 10),
-        modelId: 'model_kling-v2-1',
+        modelId: 'model_kling-v2-6-t2v-pro',
         duration: videoDuration,
         aspectRatio: '9:16',
         scenarioApiKey,
@@ -345,11 +352,13 @@ export default function GeneratePage() {
     }
 
     if (!data.success) {
+      addLog('error', `Generation failed: ${data.error}`);
       setGenerateError(data.error || 'Failed to start generation. Please try again.');
       setIsGenerating(false);
       return;
     }
 
+    addLog('success', `Job started! ID: ${data.jobId}`);
     const jobId = data.jobId!;
     setActiveJobId(jobId);
     setJobStatus({

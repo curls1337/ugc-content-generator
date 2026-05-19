@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
 import { pollJob, getAsset } from '../api/client';
+import { addLog } from '../components/LogPanel';
 import type { GeneratedContent, GenerationSession } from '@shared/types';
 
 const POLL_INTERVAL_MS = 8000;
@@ -39,13 +40,16 @@ export function useJobPoller(): void {
       isPollingRef.current = true;
 
       try {
+        addLog('info', `Polling job ${activeJobId.slice(0, 12)}...`);
         const data = await pollJob(activeJobId, scenarioApiKey, scenarioApiSecret);
 
         if (!data.success || !data.job) {
+          addLog('error', `Poll failed: ${data.error || 'no job data'}`);
           return;
         }
 
         const job = data.job;
+        addLog('info', `Status: ${job.status} | Progress: ${Math.round(job.progress * 100)}% | Assets: ${job.assetIds?.length || 0}`);
         setJobStatus(job);
 
         if (job.status === 'success' || job.status === 'failed' || job.status === 'canceled') {
@@ -56,17 +60,18 @@ export function useJobPoller(): void {
             pollRef.current = null;
           }
 
-          // On success, create gallery session
           if (job.status === 'success') {
+            addLog('success', `Job completed! AssetIds: ${JSON.stringify(job.assetIds)}`);
             try {
               let items: GeneratedContent[] = [];
 
               if (job.assetIds && job.assetIds.length > 0) {
-                // Try to fetch each asset URL
                 items = await Promise.all(
                   job.assetIds.map(async (assetId: string) => {
                     try {
+                      addLog('info', `Fetching asset: ${assetId.slice(0, 20)}...`);
                       const asset = await getAsset(assetId, scenarioApiKey, scenarioApiSecret);
+                      addLog('success', `Asset URL: ${asset.url?.slice(0, 50)}...`);
                       return {
                         id: assetId,
                         assetId,
@@ -77,9 +82,9 @@ export function useJobPoller(): void {
                         height: 1920,
                         createdAt: Date.now(),
                       };
-                    } catch {
-                      // If asset is actually a URL already (not an ID), use it directly
+                    } catch (err) {
                       const isUrl = assetId.startsWith('http');
+                      addLog('error', `Asset fetch failed for ${assetId.slice(0, 20)}, isUrl=${isUrl}`);
                       return {
                         id: assetId,
                         assetId,
@@ -93,11 +98,9 @@ export function useJobPoller(): void {
                     }
                   })
                 );
-                // Filter out items with no URL
                 items = items.filter((item) => item.url !== '');
               }
 
-              // If we got items, add session
               if (items.length > 0) {
                 const session: GenerationSession = {
                   id: activeJobId,
@@ -107,18 +110,19 @@ export function useJobPoller(): void {
                   createdAt: Date.now(),
                 };
                 addSession(session);
+                addLog('success', `Gallery session created with ${items.length} items`);
               } else {
-                // No asset IDs but job succeeded — create a placeholder session
-                // This can happen if the response format is different
-                console.warn('[useJobPoller] Job succeeded but no assets found in response');
+                addLog('error', 'Job succeeded but no downloadable assets found');
               }
             } catch (err) {
-              console.error('[useJobPoller] Failed to create gallery session:', err);
+              addLog('error', `Gallery session creation failed: ${err}`);
             }
+          } else {
+            addLog('error', `Job ended with status: ${job.status} | Error: ${job.error || 'none'}`);
           }
         }
-      } catch {
-        // Network error — keep trying
+      } catch (err) {
+        addLog('error', `Poll network error: ${err}`);
       } finally {
         isPollingRef.current = false;
       }

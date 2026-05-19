@@ -5,10 +5,10 @@ import SelectImagesPage from './pages/SelectImagesPage';
 import GeneratePage from './pages/GeneratePage';
 import GalleryPage from './pages/GalleryPage';
 import SettingsPage from './pages/SettingsPage';
+import LogPanel from './components/LogPanel';
 import { useJobPoller } from './hooks/useJobPoller';
 
 export default function App() {
-  // Global background job poller — continues polling even when user navigates away from GeneratePage
   useJobPoller();
 
   return (
@@ -22,6 +22,7 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>
+      <LogPanel />
     </BrowserRouter>
   );
 }
