@@ -9,7 +9,7 @@ import { generateImages } from './scenario/image-generator';
 import { generateVideo } from './scenario/video-generator';
 import { getAssetUrl } from './scenario/asset-manager';
 import { ScenarioClient } from './scenario/client';
-import { isValidUrl, detectPlatform } from '@shared/utils';
+import { isValidUrl, detectPlatform } from '../../shared/src/utils/index';
 import type {
   ScrapeRequest,
   PromptRequest,
@@ -17,7 +17,7 @@ import type {
   VideoGenerateRequest,
   ValidateGeminiRequest,
   ValidateScenarioRequest,
-} from '@shared/api-types';
+} from '../../shared/src/api-types';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
