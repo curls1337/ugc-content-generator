@@ -314,9 +314,9 @@ app.get('/api/models', async (req, res) => {
     }
 
     const client = new ScenarioClient(apiKey, apiSecret);
-    const models = await client.listModels();
+    const result = await client.listModels();
 
-    res.json({ success: true, models });
+    res.json({ success: true, models: result.models ?? result });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'Failed to fetch models' });
   }

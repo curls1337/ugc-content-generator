@@ -11,7 +11,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { generatePrompts, generateImage, generateVideo, pollJob as pollJobApi } from '../api/client';
+import { generatePrompts, generateImage, generateVideo, pollJob as pollJobApi, listModels } from '../api/client';
 import { addLog } from '../components/LogPanel';
 import type { JobStatus } from '@shared/types';
 
@@ -167,29 +167,10 @@ export default function GeneratePage() {
   const startTimeRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
-  const [imageModel, setImageModel] = useState('model_bfl-flux-2-dev');
-  const [videoModel, setVideoModel] = useState('model_kling-v2-1-i2v');
-
-  // Available models
-  const IMAGE_MODELS = [
-    { id: 'model_bfl-flux-2-dev', name: 'Flux 2 Dev (BFL)' },
-    { id: 'model_bfl-flux-2-schnell', name: 'Flux 2 Schnell (Fast)' },
-    { id: 'model_imagen4-ultra', name: 'Imagen 4 Ultra (Google)' },
-    { id: 'model_imagen4-fast', name: 'Imagen 4 Fast (Google)' },
-    { id: 'model_gpt-image-1', name: 'GPT Image 1 (OpenAI)' },
-    { id: 'model_ideogram-v3', name: 'Ideogram V3' },
-    { id: 'model_recraft-v3', name: 'Recraft V3' },
-  ];
-
-  const VIDEO_MODELS = [
-    { id: 'model_kling-v2-1-i2v', name: 'Kling 2.1 I2V (Image to Video)' },
-    { id: 'model_kling-v2-1-t2v', name: 'Kling 2.1 T2V (Text to Video)' },
-    { id: 'model_kling-v2-6-t2v', name: 'Kling 2.6 T2V' },
-    { id: 'model_minimax-video-01', name: 'MiniMax Video 01' },
-    { id: 'model_veo3', name: 'Veo 3 (Google)' },
-    { id: 'model_wan-2-1-i2v', name: 'Wan 2.1 I2V' },
-    { id: 'model_wan-2-1-t2v', name: 'Wan 2.1 T2V' },
-  ];
+  const [imageModel, setImageModel] = useState('');
+  const [videoModel, setVideoModel] = useState('');
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string; capabilities: string[] }[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   const {
     productData,
@@ -228,6 +209,25 @@ export default function GeneratePage() {
       navigate('/select', { replace: true });
     }
   }, [productData, selectedImages, navigate]);
+
+  // Fetch available models from Scenario API
+  useEffect(() => {
+    if (!scenarioApiKey || !scenarioApiSecret) return;
+    setLoadingModels(true);
+    listModels(scenarioApiKey, scenarioApiSecret).then((data: any) => {
+      if (data.success && data.models) {
+        const models = data.models
+          .filter((m: any) => m.custom === true && m.status === 'trained')
+          .map((m: any) => ({ id: m.id, name: m.name || m.id, capabilities: m.capabilities || [] }));
+        setAvailableModels(models);
+        // Set defaults
+        const imgModel = models.find((m: any) => m.capabilities?.some((c: string) => c === 'txt2img' || c === 'img2img'));
+        const vidModel = models.find((m: any) => m.capabilities?.some((c: string) => c === 'txt2video' || c === 'img2video'));
+        if (imgModel && !imageModel) setImageModel(imgModel.id);
+        if (vidModel && !videoModel) setVideoModel(vidModel.id);
+      }
+    }).catch(() => {}).finally(() => setLoadingModels(false));
+  }, [scenarioApiKey, scenarioApiSecret]);
 
   // Elapsed time counter during generation
   useEffect(() => {
@@ -439,21 +439,37 @@ export default function GeneratePage() {
             <label htmlFor="model-select" className="text-sm font-medium text-zinc-300">
               AI Model
             </label>
-            <select
-              id="model-select"
-              value={mode === 'image' ? imageModel : videoModel}
-              onChange={(e) => mode === 'image' ? setImageModel(e.target.value) : setVideoModel(e.target.value)}
-              disabled={isGenerating}
-              className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {(mode === 'image' ? IMAGE_MODELS : VIDEO_MODELS).map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
+            {loadingModels ? (
+              <div className="flex items-center gap-2 text-sm text-zinc-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading models...
+              </div>
+            ) : (
+              <select
+                id="model-select"
+                value={mode === 'image' ? imageModel : videoModel}
+                onChange={(e) => mode === 'image' ? setImageModel(e.target.value) : setVideoModel(e.target.value)}
+                disabled={isGenerating}
+                className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {availableModels
+                  .filter((m) => {
+                    if (mode === 'image') return m.capabilities.some((c) => c === 'txt2img' || c === 'img2img');
+                    return m.capabilities.some((c) => c === 'txt2video' || c === 'img2video');
+                  })
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>{m.name} ({m.id.replace('model_', '')})</option>
+                  ))}
+                {availableModels.filter((m) => {
+                  if (mode === 'image') return m.capabilities.some((c) => c === 'txt2img' || c === 'img2img');
+                  return m.capabilities.some((c) => c === 'txt2video' || c === 'img2video');
+                }).length === 0 && (
+                  <option value="">No models available — check Scenario API key</option>
+                )}
+              </select>
+            )}
             <p className="text-xs text-zinc-500">
-              {mode === 'image' 
-                ? 'Choose the AI model for image generation. Some models may require a higher plan.'
-                : 'Choose the AI model for video generation. I2V models use a reference image, T2V is text-only.'}
+              Models fetched from your Scenario account. Only models available on your plan are shown.
             </p>
           </div>
 
