@@ -317,11 +317,40 @@ app.get('/api/models', async (req, res) => {
     }
 
     const client = new ScenarioClient(apiKey, apiSecret);
-    // Fetch official Scenario models (Flux, Imagen, Kling, etc.) tagged sc:scenario
-    const result = await client.listModels({ privacy: 'public', tags: 'sc:scenario', pageSize: 200 });
-    const allModels = result.models ?? [];
+    
+    // Base models (Flux, Imagen, Kling, etc.) don't appear in /models list
+    // They can only be accessed directly by ID via /generate/custom/{modelId}
+    const baseModels = [
+      { id: 'model_bfl-flux-2-dev', name: 'FLUX 2 (Dev)', capabilities: ['txt2img', 'img2img'], type: 'base' },
+      { id: 'model_bfl-flux-2-schnell', name: 'FLUX 2 (Schnell/Fast)', capabilities: ['txt2img', 'img2img'], type: 'base' },
+      { id: 'model_imagen4-ultra', name: 'Imagen 4 Ultra (Google)', capabilities: ['txt2img'], type: 'base' },
+      { id: 'model_imagen4-fast', name: 'Imagen 4 Fast (Google)', capabilities: ['txt2img'], type: 'base' },
+      { id: 'model_gpt-image-1', name: 'GPT Image 1 (OpenAI)', capabilities: ['txt2img', 'img2img'], type: 'base' },
+      { id: 'model_ideogram-v3', name: 'Ideogram V3', capabilities: ['txt2img'], type: 'base' },
+      { id: 'model_recraft-v3', name: 'Recraft V3', capabilities: ['txt2img'], type: 'base' },
+      { id: 'model_seedream-3', name: 'Seedream 3 (ByteDance)', capabilities: ['txt2img'], type: 'base' },
+      { id: 'model_kling-v2-1-i2v', name: 'Kling 2.1 Image-to-Video', capabilities: ['img2video'], type: 'base' },
+      { id: 'model_kling-v2-1-t2v', name: 'Kling 2.1 Text-to-Video', capabilities: ['txt2video'], type: 'base' },
+      { id: 'model_kling-v2-6-t2v', name: 'Kling 2.6 Text-to-Video', capabilities: ['txt2video'], type: 'base' },
+      { id: 'model_minimax-video-01', name: 'MiniMax Video 01', capabilities: ['txt2video', 'img2video'], type: 'base' },
+      { id: 'model_veo3', name: 'Veo 3 (Google)', capabilities: ['txt2video'], type: 'base' },
+      { id: 'model_wan-2-1-i2v', name: 'Wan 2.1 Image-to-Video', capabilities: ['img2video'], type: 'base' },
+      { id: 'model_wan-2-1-t2v', name: 'Wan 2.1 Text-to-Video', capabilities: ['txt2video'], type: 'base' },
+    ];
 
-    res.json({ success: true, models: allModels });
+    // Also fetch user's public LoRA models
+    let loraModels: any[] = [];
+    try {
+      const publicResult = await client.listModels({ privacy: 'public', pageSize: 50 });
+      loraModels = (publicResult.models ?? []).map((m: any) => ({
+        id: m.id,
+        name: m.name || m.id,
+        capabilities: m.capabilities || [],
+        type: 'lora',
+      }));
+    } catch {}
+
+    res.json({ success: true, models: [...baseModels, ...loraModels] });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'Failed to fetch models' });
   }

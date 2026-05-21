@@ -306,11 +306,13 @@ export default function GeneratePage() {
 
   const hasValidGeminiKeys = validGeminiKeys.length > 0;
   const hasValidScenarioKey = scenarioKeyValid && scenarioApiKey.trim() !== '';
-  const filteredModels = availableModels.filter((m) => 
-    mode === 'image' 
-      ? m.capabilities.some((c) => c === 'txt2img' || c === 'img2img')
-      : m.capabilities.some((c) => c === 'txt2video' || c === 'img2video')
+  const imageModels = availableModels.filter((m) => 
+    m.capabilities.some((c) => c === 'txt2img' || c === 'img2img')
   );
+  const videoModels = availableModels.filter((m) => 
+    m.capabilities.some((c) => c === 'txt2video' || c === 'img2video')
+  );
+  const filteredModels = mode === 'image' ? imageModels : videoModels;
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
