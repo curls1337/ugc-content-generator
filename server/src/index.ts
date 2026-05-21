@@ -318,24 +318,21 @@ app.get('/api/models', async (req, res) => {
 
     const client = new ScenarioClient(apiKey, apiSecret);
     
-    // Base models (Flux, Imagen, Kling, etc.) don't appear in /models list
-    // They can only be accessed directly by ID via /generate/custom/{modelId}
+    // Base models with verified IDs and access levels
+    // access: 0=Free, 25=Creator, 50=Pro, 75=Team, 100=Enterprise
     const baseModels = [
-      { id: 'model_bfl-flux-2-dev', name: 'FLUX 2 (Dev)', capabilities: ['txt2img', 'img2img'], type: 'base' },
-      { id: 'model_bfl-flux-2-schnell', name: 'FLUX 2 (Schnell/Fast)', capabilities: ['txt2img', 'img2img'], type: 'base' },
-      { id: 'model_imagen4-ultra', name: 'Imagen 4 Ultra (Google)', capabilities: ['txt2img'], type: 'base' },
-      { id: 'model_imagen4-fast', name: 'Imagen 4 Fast (Google)', capabilities: ['txt2img'], type: 'base' },
-      { id: 'model_gpt-image-1', name: 'GPT Image 1 (OpenAI)', capabilities: ['txt2img', 'img2img'], type: 'base' },
-      { id: 'model_ideogram-v3', name: 'Ideogram V3', capabilities: ['txt2img'], type: 'base' },
-      { id: 'model_recraft-v3', name: 'Recraft V3', capabilities: ['txt2img'], type: 'base' },
-      { id: 'model_seedream-3', name: 'Seedream 3 (ByteDance)', capabilities: ['txt2img'], type: 'base' },
-      { id: 'model_kling-v2-1-i2v', name: 'Kling 2.1 Image-to-Video', capabilities: ['img2video'], type: 'base' },
-      { id: 'model_kling-v2-1-t2v', name: 'Kling 2.1 Text-to-Video', capabilities: ['txt2video'], type: 'base' },
-      { id: 'model_kling-v2-6-t2v', name: 'Kling 2.6 Text-to-Video', capabilities: ['txt2video'], type: 'base' },
-      { id: 'model_minimax-video-01', name: 'MiniMax Video 01', capabilities: ['txt2video', 'img2video'], type: 'base' },
-      { id: 'model_veo3', name: 'Veo 3 (Google)', capabilities: ['txt2video'], type: 'base' },
-      { id: 'model_wan-2-1-i2v', name: 'Wan 2.1 Image-to-Video', capabilities: ['img2video'], type: 'base' },
-      { id: 'model_wan-2-1-t2v', name: 'Wan 2.1 Text-to-Video', capabilities: ['txt2video'], type: 'base' },
+      // IMAGE MODELS
+      { id: 'model_imagen4-ultra', name: 'Imagen 4 Ultra (Google)', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_recraft-v3', name: 'Recraft 3', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_bfl-flux-2-dev', name: 'FLUX 2 Dev (BFL)', capabilities: ['txt2img', 'img2img'], type: 'base', access: 25 },
+      { id: 'model_luma-photon', name: 'Luma Photon', capabilities: ['txt2img'], type: 'base', access: 25 },
+      { id: 'model_imagen4-fast', name: 'Imagen 4 Fast (Google)', capabilities: ['txt2img'], type: 'base', access: 50 },
+      // VIDEO MODELS
+      { id: 'model_kling-v2-1', name: 'Kling 2.1 (Image-to-Video)', capabilities: ['img2video'], type: 'base', access: 25 },
+      { id: 'model_minimax-video-01', name: 'Minimax Video 01', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
+      { id: 'model_veo3', name: 'Veo 3 (Google)', capabilities: ['txt2video'], type: 'base', access: 50 },
+      { id: 'model_kling-v2-1-pro', name: 'Kling 2.1 Pro', capabilities: ['img2video'], type: 'base', access: 50 },
+      { id: 'model_kling-v2-6-t2v-pro', name: 'Kling 2.6 T2V Pro', capabilities: ['txt2video'], type: 'base', access: 50 },
     ];
 
     // Also fetch user's public LoRA models
@@ -347,6 +344,7 @@ app.get('/api/models', async (req, res) => {
         name: m.name || m.id,
         capabilities: m.capabilities || [],
         type: 'lora',
+        access: m.accessRestrictions ?? 0,
       }));
     } catch {}
 

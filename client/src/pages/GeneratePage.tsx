@@ -79,7 +79,7 @@ export default function GeneratePage() {
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [imageModel, setImageModel] = useState('');
   const [videoModel, setVideoModel] = useState('');
-  const [availableModels, setAvailableModels] = useState<{ id: string; name: string; capabilities: string[] }[]>([]);
+  const [availableModels, setAvailableModels] = useState<{ id: string; name: string; capabilities: string[]; access?: number }[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1); // 1=Setup, 2=Generate Image, 3=Generate Video
 
@@ -129,7 +129,8 @@ export default function GeneratePage() {
         const models = data.models.map((m: any) => ({
           id: m.id,
           name: m.name || m.id,
-          capabilities: m.capabilities || []
+          capabilities: m.capabilities || [],
+          access: m.access ?? m.accessRestrictions ?? 0,
         }));
         setAvailableModels(models);
         const imgModel = models.find((m: any) => m.capabilities.some((c: string) => c === 'txt2img' || c === 'img2img'));
@@ -399,9 +400,12 @@ export default function GeneratePage() {
                 {filteredModels.length === 0 ? (
                   <option value="">No models available</option>
                 ) : (
-                  filteredModels.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))
+                  filteredModels.map((m) => {
+                    const planLabel = m.access === 0 ? '✅ Free' : m.access === 25 ? '⚡ Creator' : m.access === 50 ? '👑 Pro' : '🏢 Team+';
+                    return (
+                      <option key={m.id} value={m.id}>{m.name} [{planLabel}]</option>
+                    );
+                  })
                 )}
               </select>
             )}
