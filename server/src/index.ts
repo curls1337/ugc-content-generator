@@ -317,12 +317,9 @@ app.get('/api/models', async (req, res) => {
     }
 
     const client = new ScenarioClient(apiKey, apiSecret);
-    // Fetch both private (custom) and public (built-in) models
-    const [privateResult, publicResult] = await Promise.all([
-      client.listModels('private').catch(() => ({ models: [] })),
-      client.listModels('public').catch(() => ({ models: [] })),
-    ]);
-    const allModels = [...(privateResult.models ?? []), ...(publicResult.models ?? [])];
+    // Fetch official Scenario models (Flux, Imagen, Kling, etc.) tagged sc:scenario
+    const result = await client.listModels({ privacy: 'public', tags: 'sc:scenario', pageSize: 200 });
+    const allModels = result.models ?? [];
 
     res.json({ success: true, models: allModels });
   } catch (err: any) {

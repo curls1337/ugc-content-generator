@@ -16,11 +16,15 @@ export class ScenarioClient {
 
   /**
    * List available Scenario models.
-   * GET /v1/models
+   * GET /v1/models with optional filters
    */
-  async listModels(privacy?: 'private' | 'public'): Promise<any> {
-    const query = privacy ? `?privacy=${privacy}&pageSize=100` : '?pageSize=100';
-    const response = await this.request('GET', `/v1/models${query}`);
+  async listModels(opts?: { privacy?: 'private' | 'public'; tags?: string; pageSize?: number }): Promise<any> {
+    const query = new URLSearchParams();
+    if (opts?.privacy) query.set('privacy', opts.privacy);
+    if (opts?.tags) query.set('tags', opts.tags);
+    query.set('pageSize', String(opts?.pageSize ?? 100));
+
+    const response = await this.request('GET', `/v1/models?${query.toString()}`);
     return response;
   }
 
