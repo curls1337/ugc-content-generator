@@ -279,9 +279,15 @@ export default function SettingsPage() {
           )}
         </div>
 
-        <p className="text-sm text-zinc-400 mb-4">
+        <p className="text-sm text-zinc-400 mb-2">
           Enter your Scenario API credentials for image and video generation.
         </p>
+        <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300 space-y-1">
+          <p className="font-medium">⚠️ Penting: Anda butuh DUA nilai dari Scenario:</p>
+          <p className="text-amber-400/90">1. <span className="font-mono">API Key</span> — dimulai dengan "api_..."</p>
+          <p className="text-amber-400/90">2. <span className="font-mono">API Secret</span> — string panjang yang muncul SAAT membuat API Key</p>
+          <p className="text-amber-400/70 pt-1">Dapatkan keduanya di: <a href="https://app.scenario.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-300">app.scenario.com</a> → Settings → API Keys → Add API Key. Secret hanya muncul SEKALI saat create.</p>
+        </div>
 
         <div className="space-y-3">
           {/* API Key */}
