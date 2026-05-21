@@ -187,6 +187,9 @@ export default function GeneratePage() {
     scenarioApiKey,
     scenarioApiSecret,
     scenarioKeyValid,
+    characterImage,
+    generatedImages,
+    selectedGeneratedImage,
     setMode,
     setVideoDuration,
     setPrompts,
@@ -194,6 +197,8 @@ export default function GeneratePage() {
     setJobStatus,
     setIsGenerating,
     setGenerateError,
+    addGeneratedImage,
+    setSelectedGeneratedImage,
   } = useAppStore();
 
   // Redirect if no product data
@@ -314,17 +319,34 @@ export default function GeneratePage() {
     setGenerateError(null);
     setPrompts([]);
 
+    // Extract character image base64 if uploaded
+    let characterImageBase64: string | undefined;
+    let characterImageMime: string | undefined;
+    if (characterImage) {
+      const match = characterImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
+      if (match) {
+        characterImageMime = match[1];
+        characterImageBase64 = match[2];
+      }
+    }
+
+    addLog('info', `Generating prompts | mode=${mode} | character=${!!characterImage} | images=${selectedImages.length}`);
+
     const data = await generatePrompts({
       product: productData,
       selectedImages,
       mode,
       geminiKeys: validGeminiKeys,
       geminiModel,
+      characterImageBase64,
+      characterImageMime,
     });
 
     if (!data.success) {
+      addLog('error', `Prompt generation failed: ${data.error}`);
       setGenerateError(data.error || 'Failed to generate prompts. Please try again.');
     } else {
+      addLog('success', `Generated ${data.prompts?.length || 0} prompts`);
       setPrompts(data.prompts ?? []);
     }
 
@@ -359,12 +381,16 @@ export default function GeneratePage() {
         scenarioApiSecret,
       });
     } else {
+      // For video: prefer using a generated image as the start frame (chained workflow)
+      const videoRefImages = selectedGeneratedImage 
+        ? [selectedGeneratedImage]
+        : selectedImages.slice(0, 1);
       addLog('info', `Starting video generation with model: ${videoModel}`);
       addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
-      addLog('info', `Duration: ${videoDuration}s, Reference images: ${selectedImages.length}`);
+      addLog('info', `Duration: ${videoDuration}s, Start frame: ${selectedGeneratedImage ? 'generated image' : 'product image'}`);
       data = await generateVideo({
         prompt,
-        referenceImages: selectedImages.slice(0, 10),
+        referenceImages: videoRefImages,
         modelId: videoModel,
         duration: videoDuration,
         aspectRatio: '9:16',
@@ -481,6 +507,62 @@ export default function GeneratePage() {
           )}
         </div>
       </div>
+
+      {/* Chained workflow: select generated image as start frame for video */}
+      {mode === 'video' && generatedImages.length > 0 && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 overflow-hidden">
+          <div className="p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-sm font-medium text-emerald-300 uppercase tracking-wider">Use Generated Image as Start Frame</h2>
+            </div>
+            <p className="text-xs text-zinc-400">
+              Pilih hasil image generation untuk dijadikan frame pertama video. Ini akan menghasilkan video yang konsisten dengan style image yang sudah di-generate.
+            </p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {generatedImages.map((url) => {
+                const isSelected = selectedGeneratedImage === url;
+                return (
+                  <button
+                    key={url}
+                    onClick={() => setSelectedGeneratedImage(isSelected ? null : url)}
+                    className={`relative aspect-[9/16] rounded-lg overflow-hidden border-2 transition-all ${
+                      isSelected ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-zinc-700 opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-300" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedGeneratedImage && (
+              <p className="text-xs text-emerald-300">✓ Frame pertama video akan menggunakan image ini</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Character info if uploaded */}
+      {characterImage && (
+        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-4 flex items-center gap-3">
+          <img src={characterImage} alt="Character" className="w-12 h-12 rounded-lg object-cover border border-indigo-500/30" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-indigo-300">Character aktif</p>
+            <p className="text-xs text-zinc-400">Karakter dari upload akan digunakan sebagai talent di setiap prompt</p>
+          </div>
+          <button
+            onClick={() => navigate('/character')}
+            className="text-xs px-3 py-1.5 rounded-md border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10"
+          >
+            Ubah
+          </button>
+        </div>
+      )}
 
       {/* Prompt Generation Card */}
       <div className="rounded-xl border border-zinc-800 bg-surface overflow-hidden">

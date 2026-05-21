@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { Search, Image, Sparkles, Film, Settings } from 'lucide-react';
+import { Search, Image, User, Sparkles, Film, Settings } from 'lucide-react';
 import WorkflowStepper from './WorkflowStepper';
 
 interface NavItem {
@@ -11,6 +11,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', icon: Search, label: 'Scrape' },
   { to: '/select', icon: Image, label: 'Select Images' },
+  { to: '/character', icon: User, label: 'Character' },
   { to: '/generate', icon: Sparkles, label: 'Generate' },
   { to: '/gallery', icon: Film, label: 'Gallery' },
   { to: '/settings', icon: Settings, label: 'Settings' },

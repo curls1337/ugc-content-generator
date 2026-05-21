@@ -38,7 +38,7 @@ export async function scrapeProduct(url: string): Promise<ScrapeResponse> {
 /**
  * Generate creative prompts via Gemini AI.
  */
-export async function generatePrompts(params: PromptRequest): Promise<PromptResponse> {
+export async function generatePrompts(params: PromptRequest & { characterImageBase64?: string; characterImageMime?: string }): Promise<PromptResponse> {
   try {
     const response = await fetch(`${API_BASE}/api/generate/prompt`, {
       method: 'POST',

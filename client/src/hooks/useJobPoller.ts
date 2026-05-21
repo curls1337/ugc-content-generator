@@ -25,6 +25,7 @@ export function useJobPoller(): void {
   const setJobStatus = useAppStore((s) => s.setJobStatus);
   const setIsGenerating = useAppStore((s) => s.setIsGenerating);
   const addSession = useAppStore((s) => s.addSession);
+  const addGeneratedImage = useAppStore((s) => s.addGeneratedImage);
 
   useEffect(() => {
     if (!activeJobId || !isGenerating) {
@@ -111,6 +112,14 @@ export function useJobPoller(): void {
                 };
                 addSession(session);
                 addLog('success', `Gallery session created with ${items.length} items`);
+                
+                // For image generations, also add to generatedImages for chained video workflow
+                if (mode === 'image') {
+                  items.forEach((item) => {
+                    if (item.url) addGeneratedImage(item.url);
+                  });
+                  addLog('info', `Added ${items.length} image(s) to chained workflow`);
+                }
               } else {
                 addLog('error', 'Job succeeded but no downloadable assets found');
               }
@@ -137,5 +146,5 @@ export function useJobPoller(): void {
         pollRef.current = null;
       }
     };
-  }, [activeJobId, isGenerating, scenarioApiKey, scenarioApiSecret, mode, prompts, productData, setJobStatus, setIsGenerating, addSession]);
+  }, [activeJobId, isGenerating, scenarioApiKey, scenarioApiSecret, mode, prompts, productData, setJobStatus, setIsGenerating, addSession, addGeneratedImage]);
 }

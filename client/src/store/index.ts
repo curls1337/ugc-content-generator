@@ -30,6 +30,12 @@ export interface AppStore {
   jobStatus: JobStatus | null;
   isGenerating: boolean;
   generateError: string | null;
+  // Character image (uploaded talent/person)
+  characterImage: string | null; // base64 data URL
+  characterAssetId: string | null; // Scenario asset ID after upload
+  // Generated content tracking for chained workflow
+  generatedImages: string[]; // URLs of generated product+character images
+  selectedGeneratedImage: string | null; // image selected for video generation
   setMode: (mode: 'image' | 'video') => void;
   setVideoDuration: (duration: number) => void;
   setPrompts: (prompts: string[]) => void;
@@ -38,6 +44,11 @@ export interface AppStore {
   setJobStatus: (status: JobStatus | null) => void;
   setIsGenerating: (generating: boolean) => void;
   setGenerateError: (error: string | null) => void;
+  setCharacterImage: (img: string | null) => void;
+  setCharacterAssetId: (id: string | null) => void;
+  addGeneratedImage: (url: string) => void;
+  setGeneratedImages: (urls: string[]) => void;
+  setSelectedGeneratedImage: (url: string | null) => void;
 
   // Gallery slice
   sessions: GenerationSession[];
@@ -76,6 +87,10 @@ const initialGenerationState = {
   jobStatus: null as JobStatus | null,
   isGenerating: false,
   generateError: null as string | null,
+  characterImage: null as string | null,
+  characterAssetId: null as string | null,
+  generatedImages: [] as string[],
+  selectedGeneratedImage: null as string | null,
 };
 
 export const useAppStore = create<AppStore>()(
@@ -114,6 +129,11 @@ export const useAppStore = create<AppStore>()(
       setJobStatus: (status: JobStatus | null) => set({ jobStatus: status }),
       setIsGenerating: (generating: boolean) => set({ isGenerating: generating }),
       setGenerateError: (error: string | null) => set({ generateError: error }),
+      setCharacterImage: (img: string | null) => set({ characterImage: img }),
+      setCharacterAssetId: (id: string | null) => set({ characterAssetId: id }),
+      addGeneratedImage: (url: string) => set((state: AppStore) => ({ generatedImages: [...state.generatedImages, url] })),
+      setGeneratedImages: (urls: string[]) => set({ generatedImages: urls }),
+      setSelectedGeneratedImage: (url: string | null) => set({ selectedGeneratedImage: url }),
 
       // Gallery slice
       sessions: [],

@@ -61,8 +61,8 @@ app.post('/api/scrape', async (req, res) => {
 // POST /api/generate/prompt — Analyze product and generate prompts
 app.post('/api/generate/prompt', async (req, res) => {
   try {
-    const { product, selectedImages, mode, geminiKeys, geminiModel } =
-      req.body as PromptRequest;
+    const { product, selectedImages, mode, geminiKeys, geminiModel, characterImageBase64, characterImageMime } =
+      req.body as PromptRequest & { characterImageBase64?: string; characterImageMime?: string };
 
     if (!product || !geminiKeys?.length) {
       res.status(400).json({
@@ -82,6 +82,9 @@ app.post('/api/generate/prompt', async (req, res) => {
       count: 4,
       keys: geminiKeys,
       modelName: geminiModel,
+      hasCharacter: !!characterImageBase64,
+      characterImageBase64,
+      characterImageMime,
     });
 
     res.json({ success: true, prompts, analysis });
