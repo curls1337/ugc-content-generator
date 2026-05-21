@@ -321,18 +321,51 @@ app.get('/api/models', async (req, res) => {
     // Base models with verified IDs and access levels
     // access: 0=Free, 25=Creator, 50=Pro, 75=Team, 100=Enterprise
     const baseModels = [
-      // IMAGE MODELS
+      // IMAGE MODELS (sorted by access level)
       { id: 'model_imagen4-ultra', name: 'Imagen 4 Ultra (Google)', capabilities: ['txt2img'], type: 'base', access: 0 },
       { id: 'model_recraft-v3', name: 'Recraft 3', capabilities: ['txt2img'], type: 'base', access: 0 },
-      { id: 'model_bfl-flux-2-dev', name: 'FLUX 2 Dev (BFL)', capabilities: ['txt2img', 'img2img'], type: 'base', access: 25 },
+      { id: 'model_bfl-flux-1-1-pro', name: 'FLUX 1.1 Pro', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_bfl-flux-1-1-pro-ultra', name: 'FLUX 1.1 Pro Ultra', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_bfl-flux-1-dev', name: 'FLUX 1 Dev', capabilities: ['txt2img', 'img2img'], type: 'base', access: 0 },
+      { id: 'model_bfl-flux-1-schnell', name: 'FLUX 1 Schnell', capabilities: ['txt2img', 'img2img'], type: 'base', access: 0 },
+      { id: 'model_imagen3', name: 'Imagen 3', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_imagen3-fast', name: 'Imagen 3 Fast', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_luma-photon-flash', name: 'Luma Photon Flash', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_p-image', name: 'P-Image', capabilities: ['txt2img'], type: 'base', access: 0 },
+      { id: 'model_sourceful-riverflow-2-0-fast', name: 'Riverflow 2.0 Fast', capabilities: ['txt2img', 'img2img'], type: 'base', access: 0 },
+      { id: 'model_google-gemini-pro-image-editing', name: 'Gemini 3.0 Pro', capabilities: ['txt2img', 'img2img'], type: 'base', access: 0 },
+      { id: 'model_google-gemini-3-1-flash', name: 'Gemini 3.1 Flash', capabilities: ['txt2img', 'img2img'], type: 'base', access: 0 },
+      { id: 'model_bytedance-seedream-4-5-editing', name: 'Seedream 4.5', capabilities: ['txt2img', 'img2img'], type: 'base', access: 0 },
+      { id: 'model_bfl-flux-2-dev', name: 'FLUX 2 Dev', capabilities: ['txt2img', 'img2img'], type: 'base', access: 25 },
       { id: 'model_luma-photon', name: 'Luma Photon', capabilities: ['txt2img'], type: 'base', access: 25 },
-      { id: 'model_imagen4-fast', name: 'Imagen 4 Fast (Google)', capabilities: ['txt2img'], type: 'base', access: 50 },
-      // VIDEO MODELS
-      { id: 'model_kling-v2-1', name: 'Kling 2.1 (Image-to-Video)', capabilities: ['img2video'], type: 'base', access: 25 },
+      { id: 'model_xai-grok-imagine-image', name: 'Grok Imagine Image', capabilities: ['txt2img', 'img2img'], type: 'base', access: 25 },
+      { id: 'model_ideogram-v3-turbo', name: 'Ideogram 3 Turbo', capabilities: ['txt2img', 'img2img'], type: 'base', access: 25 },
+      { id: 'model_imagen4-fast', name: 'Imagen 4 Fast', capabilities: ['txt2img'], type: 'base', access: 50 },
+      { id: 'model_openai-gpt-image-1-editing', name: 'GPT Image 1 (OpenAI)', capabilities: ['txt2img', 'img2img'], type: 'base', access: 50 },
+      // VIDEO MODELS (sorted by access level)
+      { id: 'model_p-video', name: 'P-Video', capabilities: ['txt2video', 'img2video'], type: 'base', access: 0 },
+      { id: 'model_xai-grok-imagine-video', name: 'Grok Imagine Video', capabilities: ['txt2video', 'img2video'], type: 'base', access: 0 },
+      { id: 'model_pixverse-v4-5', name: 'Pixverse 4.5', capabilities: ['txt2video', 'img2video'], type: 'base', access: 0 },
+      { id: 'model_luma-ray-flash-2-720p', name: 'Ray 2 Flash (720p)', capabilities: ['txt2video', 'img2video'], type: 'base', access: 0 },
+      { id: 'model_luma-ray-flash-2-540p', name: 'Ray 2 Flash (540p)', capabilities: ['txt2video', 'img2video'], type: 'base', access: 0 },
+      { id: 'model_minimax-video-01-director', name: 'Minimax 01 Director', capabilities: ['txt2video', 'img2video'], type: 'base', access: 0 },
+      { id: 'model_wan-2-2-t2v', name: 'Wan 2.2 T2V', capabilities: ['txt2video'], type: 'base', access: 0 },
+      { id: 'model_wan-2-1-1-3b', name: 'Wan 2.1 (1.3B)', capabilities: ['txt2video'], type: 'base', access: 0 },
+      { id: 'model_kling-v1-6-standard', name: 'Kling 1.6 (720p)', capabilities: ['img2video'], type: 'base', access: 0 },
+      { id: 'model_scenario-image-seq-to-video', name: 'Sequence-to-Video', capabilities: ['img2video'], type: 'base', access: 0 },
+      { id: 'model_kling-v2-1', name: 'Kling 2.1', capabilities: ['img2video'], type: 'base', access: 25 },
+      { id: 'model_kling-v2-1-master', name: 'Kling 2.1 Master', capabilities: ['img2video', 'txt2video'], type: 'base', access: 25 },
       { id: 'model_minimax-video-01', name: 'Minimax Video 01', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
-      { id: 'model_veo3', name: 'Veo 3 (Google)', capabilities: ['txt2video'], type: 'base', access: 50 },
+      { id: 'model_minimax-hailuo-02', name: 'Minimax Video 02', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
+      { id: 'model_runway-gen4-turbo', name: 'Runway Gen4 Turbo', capabilities: ['img2video'], type: 'base', access: 25 },
+      { id: 'model_creatify-aurora', name: 'Creatify Aurora', capabilities: ['img2video'], type: 'base', access: 25 },
+      { id: 'model_veo3-1-fast', name: 'Veo 3.1 Fast', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
+      { id: 'model_veo3-1-lite', name: 'Veo 3.1 Lite', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
+      { id: 'model_ltx-2-19b-fast', name: 'LTX-2 19b Fast', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
+      { id: 'model_open-ai-sora-2', name: 'SORA 2 (OpenAI)', capabilities: ['txt2video', 'img2video'], type: 'base', access: 25 },
+      { id: 'model_wan-2-2-i2v-a14b', name: 'Wan 2.2 I2V', capabilities: ['img2video'], type: 'base', access: 25 },
+      { id: 'model_veo3', name: 'Veo 3', capabilities: ['txt2video'], type: 'base', access: 50 },
       { id: 'model_kling-v2-1-pro', name: 'Kling 2.1 Pro', capabilities: ['img2video'], type: 'base', access: 50 },
-      { id: 'model_kling-v2-6-t2v-pro', name: 'Kling 2.6 T2V Pro', capabilities: ['txt2video'], type: 'base', access: 50 },
     ];
 
     // Also fetch user's public LoRA models
