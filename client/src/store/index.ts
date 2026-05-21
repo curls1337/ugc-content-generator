@@ -24,6 +24,8 @@ export interface AppStore {
   // Generation slice
   mode: 'image' | 'video';
   videoDuration: number;
+  voiceLanguage: 'none' | 'id' | 'en';
+  voiceStyle: 'casual' | 'energetic' | 'professional' | 'storytelling';
   prompts: string[];
   analysis: ProductAnalysis | null;
   activeJobId: string | null;
@@ -38,6 +40,8 @@ export interface AppStore {
   selectedGeneratedImage: string | null; // image selected for video generation
   setMode: (mode: 'image' | 'video') => void;
   setVideoDuration: (duration: number) => void;
+  setVoiceLanguage: (lang: 'none' | 'id' | 'en') => void;
+  setVoiceStyle: (style: 'casual' | 'energetic' | 'professional' | 'storytelling') => void;
   setPrompts: (prompts: string[]) => void;
   setAnalysis: (analysis: ProductAnalysis | null) => void;
   setActiveJobId: (jobId: string | null) => void;
@@ -80,7 +84,9 @@ const initialProductState = {
 
 const initialGenerationState = {
   mode: 'image' as const,
-  videoDuration: 5,
+  videoDuration: 8,
+  voiceLanguage: 'id' as const,
+  voiceStyle: 'casual' as const,
   prompts: [] as string[],
   analysis: null as ProductAnalysis | null,
   activeJobId: null as string | null,
@@ -123,6 +129,8 @@ export const useAppStore = create<AppStore>()(
 
       setMode: (mode: 'image' | 'video') => set({ mode }),
       setVideoDuration: (duration: number) => set({ videoDuration: duration }),
+      setVoiceLanguage: (voiceLanguage: 'none' | 'id' | 'en') => set({ voiceLanguage }),
+      setVoiceStyle: (voiceStyle: 'casual' | 'energetic' | 'professional' | 'storytelling') => set({ voiceStyle }),
       setPrompts: (prompts: string[]) => set({ prompts }),
       setAnalysis: (analysis: ProductAnalysis | null) => set({ analysis }),
       setActiveJobId: (jobId: string | null) => set({ activeJobId: jobId }),

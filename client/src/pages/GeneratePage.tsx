@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Image,
+  Image as ImageIcon,
   Film,
   Sparkles,
   Loader2,
@@ -9,152 +9,62 @@ import {
   RefreshCw,
   Clock,
   CheckCircle2,
+  Wand2,
+  Volume2,
+  VolumeX,
+  Play,
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { generatePrompts, generateImage, generateVideo, pollJob as pollJobApi, listModels } from '../api/client';
 import { addLog } from '../components/LogPanel';
 import type { JobStatus } from '@shared/types';
 
-const POLL_INTERVAL_MS = 7000;
+const POLL_INTERVAL_MS = 6000;
 
-function ModeToggle({
-  mode,
-  onModeChange,
-  disabled,
-}: {
-  mode: 'image' | 'video';
-  onModeChange: (mode: 'image' | 'video') => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="flex rounded-lg border border-zinc-700 overflow-hidden" role="radiogroup" aria-label="Generation mode">
-      <button
-        role="radio"
-        aria-checked={mode === 'image'}
-        onClick={() => onModeChange('image')}
-        disabled={disabled}
-        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors flex-1 justify-center
-          ${mode === 'image'
-            ? 'bg-accent text-white'
-            : 'bg-surface text-zinc-400 hover:text-zinc-200 hover:bg-surface-hover'
-          }
-          disabled:opacity-50 disabled:cursor-not-allowed`}
-      >
-        <Image className="w-4 h-4" aria-hidden="true" />
-        Image
-      </button>
-      <button
-        role="radio"
-        aria-checked={mode === 'video'}
-        onClick={() => onModeChange('video')}
-        disabled={disabled}
-        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors flex-1 justify-center
-          ${mode === 'video'
-            ? 'bg-accent text-white'
-            : 'bg-surface text-zinc-400 hover:text-zinc-200 hover:bg-surface-hover'
-          }
-          disabled:opacity-50 disabled:cursor-not-allowed`}
-      >
-        <Film className="w-4 h-4" aria-hidden="true" />
-        Video
-      </button>
-    </div>
-  );
-}
+const VIDEO_DURATIONS = [5, 8, 10, 15];
+const VOICE_LANGUAGES: { value: 'none' | 'id' | 'en'; label: string; flag: string }[] = [
+  { value: 'none', label: 'Tanpa Suara (No Voice)', flag: '🔇' },
+  { value: 'id', label: 'Bahasa Indonesia', flag: '🇮🇩' },
+  { value: 'en', label: 'English', flag: '🇬🇧' },
+];
+const VOICE_STYLES: { value: 'casual' | 'energetic' | 'professional' | 'storytelling'; label: string }[] = [
+  { value: 'casual', label: 'Casual & Santai' },
+  { value: 'energetic', label: 'Energetic & Hype' },
+  { value: 'professional', label: 'Professional & Trustworthy' },
+  { value: 'storytelling', label: 'Storytelling & Personal' },
+];
 
-function DurationSlider({
-  duration,
-  onDurationChange,
-  disabled,
-}: {
-  duration: number;
-  onDurationChange: (d: number) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label htmlFor="duration-slider" className="text-sm font-medium text-zinc-300">
-          Video Duration
-        </label>
-        <span className="text-sm text-accent font-medium">{duration}s</span>
-      </div>
-      <input
-        id="duration-slider"
-        type="range"
-        min={5}
-        max={15}
-        step={1}
-        value={duration}
-        onChange={(e) => onDurationChange(Number(e.target.value))}
-        disabled={disabled}
-        className="w-full h-2 rounded-full appearance-none cursor-pointer bg-zinc-700 accent-accent disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-valuemin={5}
-        aria-valuemax={15}
-        aria-valuenow={duration}
-        aria-valuetext={`${duration} seconds`}
-      />
-      <div className="flex justify-between text-xs text-zinc-500">
-        <span>5s</span>
-        <span>10s</span>
-        <span>15s</span>
-      </div>
-    </div>
-  );
-}
-
-function ProgressBar({
-  jobStatus,
-  elapsedSeconds,
-}: {
-  jobStatus: JobStatus;
-  elapsedSeconds: number;
-}) {
+function ProgressBar({ jobStatus, elapsedSeconds }: { jobStatus: JobStatus; elapsedSeconds: number }) {
   const progressPercent = Math.round(jobStatus.progress * 100);
   const statusLabel =
-    jobStatus.status === 'queued'
-      ? 'Queued'
-      : jobStatus.status === 'processing'
-        ? 'Generating'
-        : jobStatus.status === 'success'
-          ? 'Completed'
-          : jobStatus.status === 'failed'
-            ? 'Failed'
-            : 'Canceled';
-
-  const formatElapsed = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return m > 0 ? `${m}m ${s}s` : `${s}s`;
-  };
+    jobStatus.status === 'queued' ? 'Queued in Scenario...' :
+    jobStatus.status === 'processing' ? 'Generating with AI...' :
+    jobStatus.status === 'success' ? 'Completed!' :
+    jobStatus.status === 'failed' ? 'Failed' : 'Canceled';
+  const formatElapsed = (s: number) => s > 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           {jobStatus.status === 'processing' || jobStatus.status === 'queued' ? (
-            <Loader2 className="w-4 h-4 animate-spin text-accent" aria-hidden="true" />
+            <Loader2 className="w-4 h-4 animate-spin text-accent" />
           ) : jobStatus.status === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" aria-hidden="true" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-red-400" aria-hidden="true" />
+            <AlertCircle className="w-4 h-4 text-red-400" />
           )}
           <span className="text-zinc-300 font-medium">{statusLabel}</span>
         </div>
         <div className="flex items-center gap-3 text-zinc-400">
           <span>{progressPercent}%</span>
-          <span className="flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-            {formatElapsed(elapsedSeconds)}
-          </span>
+          <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{formatElapsed(elapsedSeconds)}</span>
         </div>
       </div>
-      <div className="w-full h-2.5 rounded-full bg-zinc-700 overflow-hidden" role="progressbar" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100}>
+      <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            jobStatus.status === 'failed' ? 'bg-red-500' : 'bg-accent'
-          }`}
-          style={{ width: `${progressPercent}%` }}
+          className={`h-full rounded-full transition-all ${jobStatus.status === 'failed' ? 'bg-red-500' : 'bg-accent'}`}
+          style={{ width: `${Math.max(progressPercent, 5)}%` }}
         />
       </div>
     </div>
@@ -171,12 +81,15 @@ export default function GeneratePage() {
   const [videoModel, setVideoModel] = useState('');
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string; capabilities: string[] }[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [activeStep, setActiveStep] = useState<1 | 2 | 3>(1); // 1=Setup, 2=Generate Image, 3=Generate Video
 
   const {
     productData,
     selectedImages,
     mode,
     videoDuration,
+    voiceLanguage,
+    voiceStyle,
     prompts,
     activeJobId,
     jobStatus,
@@ -192,48 +105,41 @@ export default function GeneratePage() {
     selectedGeneratedImage,
     setMode,
     setVideoDuration,
+    setVoiceLanguage,
+    setVoiceStyle,
     setPrompts,
     setActiveJobId,
     setJobStatus,
     setIsGenerating,
     setGenerateError,
-    addGeneratedImage,
     setSelectedGeneratedImage,
   } = useAppStore();
 
-  // Redirect if no product data
   useEffect(() => {
-    if (!productData) {
-      navigate('/', { replace: true });
-    }
-  }, [productData, navigate]);
-
-  // Redirect if no selected images
-  useEffect(() => {
-    if (productData && selectedImages.length === 0) {
-      navigate('/select', { replace: true });
-    }
+    if (!productData) navigate('/', { replace: true });
+    else if (selectedImages.length === 0) navigate('/select', { replace: true });
   }, [productData, selectedImages, navigate]);
 
-  // Fetch available models from Scenario API
+  // Fetch available models
   useEffect(() => {
     if (!scenarioApiKey || !scenarioApiSecret) return;
     setLoadingModels(true);
     listModels(scenarioApiKey, scenarioApiSecret).then((data: any) => {
       if (data.success && data.models) {
-        const models = data.models
-          .map((m: any) => ({ id: m.id, name: m.name || m.id, capabilities: m.capabilities || [] }));
+        const models = data.models.map((m: any) => ({
+          id: m.id,
+          name: m.name || m.id,
+          capabilities: m.capabilities || []
+        }));
         setAvailableModels(models);
-        // Set defaults
-        const imgModel = models.find((m: any) => m.capabilities?.some((c: string) => c === 'txt2img' || c === 'img2img'));
-        const vidModel = models.find((m: any) => m.capabilities?.some((c: string) => c === 'txt2video' || c === 'img2video'));
+        const imgModel = models.find((m: any) => m.capabilities.some((c: string) => c === 'txt2img' || c === 'img2img'));
+        const vidModel = models.find((m: any) => m.capabilities.some((c: string) => c === 'txt2video' || c === 'img2video'));
         if (imgModel && !imageModel) setImageModel(imgModel.id);
         if (vidModel && !videoModel) setVideoModel(vidModel.id);
       }
     }).catch(() => {}).finally(() => setLoadingModels(false));
   }, [scenarioApiKey, scenarioApiSecret]);
 
-  // Elapsed time counter during generation
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
     if (isGenerating && startTimeRef.current) {
@@ -241,28 +147,13 @@ export default function GeneratePage() {
         setElapsedSeconds(Math.floor((Date.now() - (startTimeRef.current ?? Date.now())) / 1000));
       }, 1000);
     }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    return () => { if (timer) clearInterval(timer); };
   }, [isGenerating]);
 
-  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, []);
-
-  // Resume polling if there's an active job on mount
-  useEffect(() => {
-    if (activeJobId && isGenerating && !pollRef.current) {
-      startTimeRef.current = Date.now();
-      startPolling(activeJobId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validGeminiKeys = geminiKeys.filter((k) => k.valid).map((k) => k.key);
@@ -274,52 +165,38 @@ export default function GeneratePage() {
     }
   }, []);
 
-  const pollJob = useCallback(
-    async (jobId: string) => {
-      try {
-        const data = await pollJobApi(jobId, scenarioApiKey, scenarioApiSecret);
-
-        if (!data.success) {
-          // Don't stop polling on transient errors
-          return;
+  const pollJob = useCallback(async (jobId: string) => {
+    try {
+      const data = await pollJobApi(jobId, scenarioApiKey, scenarioApiSecret);
+      if (!data.success || !data.job) return;
+      const job: JobStatus = data.job;
+      setJobStatus(job);
+      addLog('info', `Polling: ${job.status} | ${Math.round(job.progress * 100)}%`);
+      if (job.status === 'success' || job.status === 'failed' || job.status === 'canceled') {
+        stopPolling();
+        setIsGenerating(false);
+        if (job.status === 'failed') {
+          setGenerateError(job.error || 'Generation failed.');
+        } else if (job.status === 'success' && mode === 'image') {
+          // Auto-advance to step 3 (video) after image success
+          setTimeout(() => setActiveStep(3), 1500);
         }
-
-        const job: JobStatus = data.job!;
-        setJobStatus(job);
-
-        if (job.status === 'success' || job.status === 'failed' || job.status === 'canceled') {
-          stopPolling();
-          setIsGenerating(false);
-
-          if (job.status === 'failed') {
-            setGenerateError(job.error || 'Generation failed. Please try again.');
-          }
-        }
-      } catch {
-        // Network error during polling - don't stop, retry on next interval
       }
-    },
-    [scenarioApiKey, scenarioApiSecret, setJobStatus, setIsGenerating, setGenerateError, stopPolling]
-  );
+    } catch {}
+  }, [scenarioApiKey, scenarioApiSecret, setJobStatus, setIsGenerating, setGenerateError, stopPolling, mode]);
 
-  const startPolling = useCallback(
-    (jobId: string) => {
-      stopPolling();
-      pollRef.current = setInterval(() => pollJob(jobId), POLL_INTERVAL_MS);
-      // Also poll immediately
-      pollJob(jobId);
-    },
-    [pollJob, stopPolling]
-  );
+  const startPolling = useCallback((jobId: string) => {
+    stopPolling();
+    pollRef.current = setInterval(() => pollJob(jobId), POLL_INTERVAL_MS);
+    pollJob(jobId);
+  }, [pollJob, stopPolling]);
 
   const handleGeneratePrompts = async () => {
     if (!productData) return;
-
     setIsGeneratingPrompts(true);
     setGenerateError(null);
     setPrompts([]);
 
-    // Extract character image base64 if uploaded
     let characterImageBase64: string | undefined;
     let characterImageMime: string | undefined;
     if (characterImage) {
@@ -330,8 +207,7 @@ export default function GeneratePage() {
       }
     }
 
-    addLog('info', `Generating prompts | mode=${mode} | character=${!!characterImage} | images=${selectedImages.length}`);
-
+    addLog('info', `Generating prompts | mode=${mode} | character=${!!characterImage}`);
     const data = await generatePrompts({
       product: productData,
       selectedImages,
@@ -343,20 +219,18 @@ export default function GeneratePage() {
     });
 
     if (!data.success) {
-      addLog('error', `Prompt generation failed: ${data.error}`);
-      setGenerateError(data.error || 'Failed to generate prompts. Please try again.');
+      addLog('error', `Prompt failed: ${data.error}`);
+      setGenerateError(data.error || 'Failed to generate prompts.');
     } else {
-      addLog('success', `Generated ${data.prompts?.length || 0} prompts`);
+      addLog('success', `Got ${data.prompts?.length || 0} prompts`);
       setPrompts(data.prompts ?? []);
     }
-
     setIsGeneratingPrompts(false);
   };
 
   const handleGenerateContent = async (promptIndex: number) => {
     const prompt = prompts[promptIndex];
     if (!prompt) return;
-
     setGenerateError(null);
     setIsGenerating(true);
     setJobStatus(null);
@@ -367,12 +241,10 @@ export default function GeneratePage() {
     let data: { success: boolean; jobId?: string; error?: string };
 
     if (mode === 'image') {
-      addLog('info', `Starting image generation with model: ${imageModel}`);
-      addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
-      addLog('info', `Reference images: ${selectedImages.length}`);
+      addLog('info', `Generate IMAGE | model=${imageModel}`);
       data = await generateImage({
         prompt,
-        referenceImages: selectedImages.slice(0, 5),
+        referenceImages: selectedImages.slice(0, 3),
         modelId: imageModel,
         numOutputs: 2,
         width: 1080,
@@ -381,15 +253,21 @@ export default function GeneratePage() {
         scenarioApiSecret,
       });
     } else {
-      // For video: prefer using a generated image as the start frame (chained workflow)
-      const videoRefImages = selectedGeneratedImage 
-        ? [selectedGeneratedImage]
-        : selectedImages.slice(0, 1);
-      addLog('info', `Starting video generation with model: ${videoModel}`);
-      addLog('info', `Prompt: ${prompt.slice(0, 80)}...`);
-      addLog('info', `Duration: ${videoDuration}s, Start frame: ${selectedGeneratedImage ? 'generated image' : 'product image'}`);
+      const videoRefImages = selectedGeneratedImage ? [selectedGeneratedImage] : selectedImages.slice(0, 1);
+      addLog('info', `Generate VIDEO | model=${videoModel} | ${videoDuration}s | voice=${voiceLanguage}`);
+      
+      // Build enhanced prompt with voice instructions
+      let enhancedPrompt = prompt;
+      if (voiceLanguage !== 'none') {
+        const langText = voiceLanguage === 'id' ? 'Bahasa Indonesia' : 'English';
+        const styleText = VOICE_STYLES.find(s => s.value === voiceStyle)?.label || 'casual';
+        enhancedPrompt = `${prompt}\n\nThe character speaks ${langText} in a ${styleText} tone, expressing the product's benefits naturally.`;
+      } else {
+        enhancedPrompt = `${prompt}\n\nNo dialogue. Focus on visual storytelling and natural sound only.`;
+      }
+
       data = await generateVideo({
-        prompt,
+        prompt: enhancedPrompt,
         referenceImages: videoRefImages,
         modelId: videoModel,
         duration: videoDuration,
@@ -400,332 +278,359 @@ export default function GeneratePage() {
     }
 
     if (!data.success) {
-      addLog('error', `Generation failed: ${data.error}`);
-      setGenerateError(data.error || 'Failed to start generation. Please try again.');
+      addLog('error', `Failed: ${data.error}`);
+      setGenerateError(data.error || 'Failed to start generation.');
       setIsGenerating(false);
       return;
     }
 
-    addLog('success', `Job started! ID: ${data.jobId}`);
+    addLog('success', `Job started: ${data.jobId}`);
     const jobId = data.jobId!;
     setActiveJobId(jobId);
     setJobStatus({
-      jobId,
-      status: 'queued',
-      progress: 0,
-      assetIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      jobId, status: 'queued', progress: 0, assetIds: [],
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     });
-
     startPolling(jobId);
   };
 
-  const handleRetry = () => {
-    setGenerateError(null);
+  const handleSwitchToVideo = () => {
+    setMode('video');
+    setActiveStep(3);
+    setPrompts([]); // Clear image prompts, will regenerate for video
     setJobStatus(null);
     setActiveJobId(null);
-    setIsGenerating(false);
-    stopPolling();
   };
 
-  const handlePromptEdit = (index: number, value: string) => {
-    const updated = [...prompts];
-    updated[index] = value;
-    setPrompts(updated);
-  };
-
-  // Guard: don't render if no product data
   if (!productData) return null;
 
   const hasValidGeminiKeys = validGeminiKeys.length > 0;
   const hasValidScenarioKey = scenarioKeyValid && scenarioApiKey.trim() !== '';
-  const canGeneratePrompts = hasValidGeminiKeys && !isGenerating && !isGeneratingPrompts;
-  const canGenerateContent = hasValidScenarioKey && prompts.length > 0 && !isGenerating;
+  const filteredModels = availableModels.filter((m) => 
+    mode === 'image' 
+      ? m.capabilities.some((c) => c === 'txt2img' || c === 'img2img')
+      : m.capabilities.some((c) => c === 'txt2video' || c === 'img2video')
+  );
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Generate Content</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Generate AI-powered {mode === 'image' ? 'images' : 'videos'} from your product data.
-        </p>
+        <h1 className="text-2xl font-bold text-zinc-100 tracking-tight">Generate UGC Content</h1>
+        <p className="mt-1 text-sm text-zinc-400">Workflow: Setup → Generate Image → Generate Video</p>
       </div>
 
-      {/* Mode Selection Card */}
-      <div className="rounded-xl border border-zinc-800 bg-surface overflow-hidden">
-        <div className="p-5 space-y-4">
-          <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Mode</h2>
-          <ModeToggle mode={mode} onModeChange={setMode} disabled={isGenerating} />
+      {/* Step indicator */}
+      <div className="flex items-center gap-2">
+        {[
+          { num: 1, label: 'Setup', desc: 'Pilih mode & model' },
+          { num: 2, label: 'Image', desc: 'Generate gambar' },
+          { num: 3, label: 'Video', desc: 'Generate video' },
+        ].map((s, i) => (
+          <div key={s.num} className="flex items-center gap-2 flex-1">
+            <button
+              onClick={() => setActiveStep(s.num as 1 | 2 | 3)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all flex-1 ${
+                activeStep === s.num 
+                  ? 'bg-accent text-white border-accent' 
+                  : activeStep > s.num
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                  : 'bg-surface text-zinc-400 border-zinc-800'
+              }`}
+            >
+              <span className="w-6 h-6 rounded-full bg-black/20 flex items-center justify-center text-xs font-bold">
+                {activeStep > s.num ? <CheckCircle2 className="w-4 h-4" /> : s.num}
+              </span>
+              <div className="text-left">
+                <div className="text-xs font-semibold">{s.label}</div>
+                <div className="text-[10px] opacity-70">{s.desc}</div>
+              </div>
+            </button>
+            {i < 2 && <div className="w-4 h-px bg-zinc-700" />}
+          </div>
+        ))}
+      </div>
 
-          {/* Model Selector */}
-          <div className="space-y-2">
-            <label htmlFor="model-select" className="text-sm font-medium text-zinc-300">
-              AI Model
-            </label>
+      {/* Step 1: Setup */}
+      {activeStep === 1 && (
+        <div className="space-y-4">
+          {/* Mode selector */}
+          <div className="rounded-xl border border-zinc-800 bg-surface p-5 space-y-4">
+            <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">1. Output Type</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setMode('image')}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  mode === 'image' ? 'border-accent bg-accent/10' : 'border-zinc-700 bg-bg hover:border-zinc-600'
+                }`}
+              >
+                <ImageIcon className={`w-6 h-6 mx-auto mb-2 ${mode === 'image' ? 'text-accent' : 'text-zinc-400'}`} />
+                <div className="text-sm font-medium text-zinc-200">Image First</div>
+                <div className="text-[10px] text-zinc-500 mt-1">Generate gambar dulu, lalu video</div>
+              </button>
+              <button
+                onClick={() => setMode('video')}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  mode === 'video' ? 'border-accent bg-accent/10' : 'border-zinc-700 bg-bg hover:border-zinc-600'
+                }`}
+              >
+                <Film className={`w-6 h-6 mx-auto mb-2 ${mode === 'video' ? 'text-accent' : 'text-zinc-400'}`} />
+                <div className="text-sm font-medium text-zinc-200">Video Direct</div>
+                <div className="text-[10px] text-zinc-500 mt-1">Langsung generate video</div>
+              </button>
+            </div>
+          </div>
+
+          {/* AI Model */}
+          <div className="rounded-xl border border-zinc-800 bg-surface p-5 space-y-3">
+            <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">2. AI Model ({mode === 'image' ? 'Image' : 'Video'})</h2>
             {loadingModels ? (
               <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading models...
+                <Loader2 className="w-4 h-4 animate-spin" />Loading models...
               </div>
             ) : (
               <select
-                id="model-select"
                 value={mode === 'image' ? imageModel : videoModel}
                 onChange={(e) => mode === 'image' ? setImageModel(e.target.value) : setVideoModel(e.target.value)}
-                disabled={isGenerating}
-                className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm"
               >
-                {availableModels
-                  .filter((m) => {
-                    if (mode === 'image') return m.capabilities.some((c) => c === 'txt2img' || c === 'img2img');
-                    return m.capabilities.some((c) => c === 'txt2video' || c === 'img2video');
-                  })
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>{m.name} ({m.id.replace('model_', '')})</option>
-                  ))}
-                {availableModels.filter((m) => {
-                  if (mode === 'image') return m.capabilities.some((c) => c === 'txt2img' || c === 'img2img');
-                  return m.capabilities.some((c) => c === 'txt2video' || c === 'img2video');
-                }).length === 0 && (
-                  <option value="">No models available — check Scenario API key</option>
+                {filteredModels.length === 0 ? (
+                  <option value="">No models available</option>
+                ) : (
+                  filteredModels.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))
                 )}
               </select>
             )}
-            <p className="text-xs text-zinc-500">
-              Models fetched from your Scenario account. Only models available on your plan are shown.
-            </p>
+            <p className="text-xs text-zinc-500">{filteredModels.length} model tersedia di plan Anda</p>
           </div>
 
+          {/* Video options (only when video mode) */}
           {mode === 'video' && (
-            <DurationSlider
-              duration={videoDuration}
-              onDurationChange={setVideoDuration}
-              disabled={isGenerating}
-            />
-          )}
-        </div>
-      </div>
+            <div className="rounded-xl border border-zinc-800 bg-surface p-5 space-y-4">
+              <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">3. Video Settings</h2>
+              
+              {/* Duration */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-300">Durasi Video</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {VIDEO_DURATIONS.map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setVideoDuration(d)}
+                      className={`py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                        videoDuration === d ? 'bg-accent text-white border-accent' : 'bg-bg border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                      }`}
+                    >
+                      {d}s
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-      {/* Chained workflow: select generated image as start frame for video */}
-      {mode === 'video' && generatedImages.length > 0 && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 overflow-hidden">
-          <div className="p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <h2 className="text-sm font-medium text-emerald-300 uppercase tracking-wider">Use Generated Image as Start Frame</h2>
-            </div>
-            <p className="text-xs text-zinc-400">
-              Pilih hasil image generation untuk dijadikan frame pertama video. Ini akan menghasilkan video yang konsisten dengan style image yang sudah di-generate.
-            </p>
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {generatedImages.map((url) => {
-                const isSelected = selectedGeneratedImage === url;
-                return (
-                  <button
-                    key={url}
-                    onClick={() => setSelectedGeneratedImage(isSelected ? null : url)}
-                    className={`relative aspect-[9/16] rounded-lg overflow-hidden border-2 transition-all ${
-                      isSelected ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-zinc-700 opacity-60 hover:opacity-100'
-                    }`}
+              {/* Voice Language */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                  <Volume2 className="w-4 h-4" />Bahasa Suara
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {VOICE_LANGUAGES.map((l) => (
+                    <button
+                      key={l.value}
+                      onClick={() => setVoiceLanguage(l.value)}
+                      className={`py-2 px-2 rounded-lg border text-xs font-medium transition-all ${
+                        voiceLanguage === l.value ? 'bg-accent text-white border-accent' : 'bg-bg border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                      }`}
+                    >
+                      <span className="block text-base mb-0.5">{l.flag}</span>
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Voice Style */}
+              {voiceLanguage !== 'none' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-zinc-300">Style Suara</label>
+                  <select
+                    value={voiceStyle}
+                    onChange={(e) => setVoiceStyle(e.target.value as any)}
+                    className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm"
                   >
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                    {isSelected && (
-                      <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
-                        <CheckCircle2 className="w-6 h-6 text-emerald-300" />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
+                    {VOICE_STYLES.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
-            {selectedGeneratedImage && (
-              <p className="text-xs text-emerald-300">✓ Frame pertama video akan menggunakan image ini</p>
-            )}
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Character info if uploaded */}
-      {characterImage && (
-        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-4 flex items-center gap-3">
-          <img src={characterImage} alt="Character" className="w-12 h-12 rounded-lg object-cover border border-indigo-500/30" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-indigo-300">Character aktif</p>
-            <p className="text-xs text-zinc-400">Karakter dari upload akan digunakan sebagai talent di setiap prompt</p>
-          </div>
           <button
-            onClick={() => navigate('/character')}
-            className="text-xs px-3 py-1.5 rounded-md border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10"
+            onClick={() => setActiveStep(2)}
+            disabled={!hasValidGeminiKeys || !hasValidScenarioKey || filteredModels.length === 0}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-accent hover:bg-accent-hover text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Ubah
+            Lanjut ke Generate
+            <Wand2 className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Prompt Generation Card */}
-      <div className="rounded-xl border border-zinc-800 bg-surface overflow-hidden">
-        <div className="p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Prompts</h2>
-            {prompts.length > 0 && (
-              <span className="text-xs text-zinc-500">{prompts.length} prompt{prompts.length !== 1 ? 's' : ''}</span>
-            )}
-          </div>
-
-          {/* Key warnings */}
-          {!hasValidGeminiKeys && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-              <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
-              <p className="text-sm text-amber-300">
-                No valid Gemini API keys configured.{' '}
-                <button onClick={() => navigate('/settings')} className="underline hover:text-amber-200">
-                  Go to Settings
-                </button>
-              </p>
+      {/* Step 2 & 3: Prompts + Generate */}
+      {(activeStep === 2 || activeStep === 3) && (
+        <div className="space-y-4">
+          {/* Character info */}
+          {characterImage && (
+            <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-3 flex items-center gap-3">
+              <img src={characterImage} alt="Character" className="w-10 h-10 rounded-lg object-cover" />
+              <div className="flex-1 text-xs">
+                <div className="font-medium text-indigo-300">Character aktif</div>
+                <div className="text-zinc-400">Akan jadi talent di video</div>
+              </div>
+              <button onClick={() => navigate('/character')} className="text-xs px-3 py-1 rounded border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10">
+                Ubah
+              </button>
             </div>
           )}
 
-          {/* Generate Prompts button */}
-          <button
-            onClick={handleGeneratePrompts}
-            disabled={!canGeneratePrompts}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-accent hover:bg-accent-hover text-white font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-accent/50 focus:ring-offset-2 focus:ring-offset-surface"
-          >
-            {isGeneratingPrompts ? (
+          {/* Settings summary */}
+          <div className="rounded-xl border border-zinc-800 bg-surface p-3 flex flex-wrap items-center gap-3 text-xs">
+            <span className="px-2 py-1 rounded bg-accent/10 text-accent font-medium">{mode.toUpperCase()}</span>
+            <span className="text-zinc-400">{(mode === 'image' ? imageModel : videoModel).replace('model_', '')}</span>
+            {mode === 'video' && (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                Generating Prompts...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" aria-hidden="true" />
-                Generate Prompts
+                <span className="text-zinc-500">•</span>
+                <span className="text-zinc-300">{videoDuration}s</span>
+                <span className="text-zinc-500">•</span>
+                <span className="text-zinc-300 flex items-center gap-1">
+                  {voiceLanguage === 'none' ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+                  {VOICE_LANGUAGES.find(l => l.value === voiceLanguage)?.flag} {voiceLanguage === 'none' ? 'No voice' : voiceStyle}
+                </span>
               </>
             )}
+            <button onClick={() => setActiveStep(1)} className="ml-auto text-accent hover:underline">Edit</button>
+          </div>
+
+          {/* Generated images for video chained workflow */}
+          {mode === 'video' && generatedImages.length > 0 && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <h3 className="text-xs font-medium text-emerald-300 uppercase tracking-wider">Pilih Image untuk Frame Pertama Video</h3>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                {generatedImages.map((url) => {
+                  const isSelected = selectedGeneratedImage === url;
+                  return (
+                    <button
+                      key={url}
+                      onClick={() => setSelectedGeneratedImage(isSelected ? null : url)}
+                      className={`relative aspect-[9/16] rounded-lg overflow-hidden border-2 transition-all ${
+                        isSelected ? 'border-emerald-400 ring-2 ring-emerald-400/30' : 'border-zinc-700 opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      {isSelected && (
+                        <div className="absolute inset-0 bg-emerald-500/20 flex items-center justify-center">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-300" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Generate prompts */}
+          <button
+            onClick={handleGeneratePrompts}
+            disabled={!hasValidGeminiKeys || isGenerating || isGeneratingPrompts}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-accent hover:bg-accent-hover text-white font-medium text-sm disabled:opacity-50"
+          >
+            {isGeneratingPrompts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {prompts.length > 0 ? 'Regenerate Prompts' : 'Generate Prompts'}
           </button>
 
           {/* Prompts list */}
           {prompts.length > 0 && (
             <div className="space-y-3">
-              {prompts.map((prompt, index) => (
-                <div key={index} className="space-y-2">
-                  <label htmlFor={`prompt-${index}`} className="text-xs font-medium text-zinc-400">
-                    Prompt {index + 1}
-                  </label>
+              {prompts.map((prompt, i) => (
+                <div key={i} className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-zinc-400">Prompt #{i + 1}</span>
+                  </div>
                   <textarea
-                    id={`prompt-${index}`}
                     value={prompt}
-                    onChange={(e) => handlePromptEdit(index, e.target.value)}
-                    disabled={isGenerating}
+                    onChange={(e) => {
+                      const updated = [...prompts];
+                      updated[i] = e.target.value;
+                      setPrompts(updated);
+                    }}
                     rows={3}
-                    className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-100 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    aria-label={`Edit prompt ${index + 1}`}
+                    className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-xs resize-y"
                   />
-                  {/* Generate Content button per prompt */}
-                  {!isGenerating && (
-                    <button
-                      onClick={() => handleGenerateContent(index)}
-                      disabled={!canGenerateContent}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                    >
-                      {mode === 'image' ? (
-                        <Image className="w-3.5 h-3.5" aria-hidden="true" />
-                      ) : (
-                        <Film className="w-3.5 h-3.5" aria-hidden="true" />
-                      )}
-                      Generate {mode === 'image' ? 'Image' : 'Video'}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleGenerateContent(i)}
+                    disabled={!hasValidScenarioKey || isGenerating}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50"
+                  >
+                    {mode === 'image' ? <ImageIcon className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    Generate {mode === 'image' ? 'Image' : 'Video'} from this prompt
+                  </button>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Scenario key warning */}
-          {prompts.length > 0 && !hasValidScenarioKey && (
-            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
-              <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" aria-hidden="true" />
-              <p className="text-sm text-amber-300">
-                No valid Scenario API key configured.{' '}
-                <button onClick={() => navigate('/settings')} className="underline hover:text-amber-200">
-                  Go to Settings
-                </button>
-              </p>
+          {/* Progress */}
+          {(isGenerating || jobStatus) && (
+            <div className="rounded-xl border border-zinc-800 bg-surface p-5 space-y-3">
+              <h3 className="text-xs font-medium text-zinc-300 uppercase tracking-wider">Progress</h3>
+              {jobStatus && <ProgressBar jobStatus={jobStatus} elapsedSeconds={elapsedSeconds} />}
+              {jobStatus?.status === 'success' && (
+                <div className="flex gap-2">
+                  {mode === 'image' && (
+                    <button
+                      onClick={handleSwitchToVideo}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium"
+                    >
+                      <Film className="w-4 h-4" />
+                      Lanjut ke Video
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate('/gallery')}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Lihat Gallery
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Error */}
+          {generateError && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-300">{generateError}</p>
+              </div>
+              <button
+                onClick={() => { setGenerateError(null); setJobStatus(null); setActiveJobId(null); setIsGenerating(false); stopPolling(); }}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />Retry
+              </button>
             </div>
           )}
         </div>
-      </div>
-
-      {/* Progress Card */}
-      {(isGenerating || jobStatus) && (
-        <div className="rounded-xl border border-zinc-800 bg-surface overflow-hidden">
-          <div className="p-5 space-y-4">
-            <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">
-              Generation Progress
-            </h2>
-            {jobStatus && (
-              <ProgressBar jobStatus={jobStatus} elapsedSeconds={elapsedSeconds} />
-            )}
-            {jobStatus?.status === 'success' && (
-              <button
-                onClick={() => navigate('/gallery')}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              >
-                <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
-                View in Gallery
-              </button>
-            )}
-          </div>
-        </div>
       )}
-
-      {/* Error display with retry */}
-      {generateError && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 overflow-hidden">
-          <div className="p-5 space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" aria-hidden="true" />
-              <div className="flex-1">
-                <p className="text-sm text-red-300">{generateError}</p>
-              </div>
-            </div>
-            <button
-              onClick={handleRetry}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-600/50"
-            >
-              <RefreshCw className="w-4 h-4" aria-hidden="true" />
-              Retry
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Product context summary */}
-      <div className="rounded-xl border border-zinc-800 bg-surface overflow-hidden">
-        <div className="p-5 space-y-3">
-          <h2 className="text-sm font-medium text-zinc-300 uppercase tracking-wider">Product Context</h2>
-          <div className="flex items-start gap-3">
-            {selectedImages[0] && (
-              <img
-                src={selectedImages[0]}
-                alt="Product thumbnail"
-                className="w-12 h-12 rounded-lg object-cover border border-zinc-700"
-              />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-zinc-200 truncate">{productData.title}</p>
-              {productData.price && (
-                <p className="text-xs text-zinc-400 mt-0.5">{productData.price}</p>
-              )}
-              <p className="text-xs text-zinc-500 mt-0.5">
-                {selectedImages.length} image{selectedImages.length !== 1 ? 's' : ''} selected
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
