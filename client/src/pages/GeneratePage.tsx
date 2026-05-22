@@ -66,6 +66,7 @@ export default function GeneratePage() {
   const [availableModels, setAvailableModels] = useState<{ id: string; name: string; capabilities: string[]; access?: number }[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [sceneRefs, setSceneRefs] = useState<Record<number, string>>({}); // per-scene reference image
 
   const {
     productData, selectedImages, mode, videoDuration, voiceLanguage, voiceStyle,
@@ -145,8 +146,9 @@ export default function GeneratePage() {
     let data: { success: boolean; jobId?: string; error?: string };
 
     if (step === 2) {
-      addLog('info', `IMAGE gen | ${imageModel}`);
-      data = await generateImage({ prompt, referenceImages: selectedImages.slice(0, 3), modelId: imageModel, numOutputs: 1, width: 1080, height: 1920, scenarioApiKey, scenarioApiSecret });
+      const refImg = sceneRefs[promptIdx] || selectedImages[0] || '';
+      addLog('info', `IMAGE gen | ${imageModel} | ref: ${refImg.slice(0, 40)}...`);
+      data = await generateImage({ prompt, referenceImages: refImg ? [refImg] : selectedImages.slice(0, 1), modelId: imageModel, numOutputs: 1, width: 1080, height: 1920, scenarioApiKey, scenarioApiSecret });
     } else {
       const ref = selectedGeneratedImage ? [selectedGeneratedImage] : selectedImages.slice(0, 1);
       let enhanced = prompt;
@@ -270,20 +272,40 @@ export default function GeneratePage() {
 
           {prompts.length > 0 && (
             <div className="space-y-3">
-              {prompts.map((p, i) => (
-                <div key={i} className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-zinc-500">SCENE {i + 1}</span>
-                    <span className="text-[10px] text-zinc-600">{p.length} chars</span>
+              {prompts.map((p, i) => {
+                const refImg = sceneRefs[i] || selectedImages[0] || '';
+                return (
+                  <div key={i} className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-zinc-500">SCENE {i + 1}</span>
+                      <span className="text-[10px] text-zinc-600">{p.length} chars</span>
+                    </div>
+
+                    {/* Reference image selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-medium text-zinc-400">Reference Image (product)</label>
+                      <div className="flex gap-1.5 overflow-x-auto pb-1">
+                        {selectedImages.map((img, idx) => {
+                          const isActive = refImg === img;
+                          return (
+                            <button key={idx} onClick={() => setSceneRefs(prev => ({ ...prev, [i]: img }))}
+                              className={`shrink-0 w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${isActive ? 'border-accent ring-1 ring-accent/50' : 'border-zinc-700 opacity-50 hover:opacity-80'}`}>
+                              <img src={img} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <textarea value={p} onChange={e => { const u = [...prompts]; u[i] = e.target.value; setPrompts(u); }} rows={2} disabled={isGenerating}
+                      className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-[11px] leading-relaxed resize-y disabled:opacity-50" />
+                    <button onClick={() => handleGenerate(i)} disabled={isGenerating || !imageModel}
+                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50">
+                      <Zap className="w-3.5 h-3.5" />Generate Scene Image
+                    </button>
                   </div>
-                  <textarea value={p} onChange={e => { const u = [...prompts]; u[i] = e.target.value; setPrompts(u); }} rows={2} disabled={isGenerating}
-                    className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-[11px] leading-relaxed resize-y disabled:opacity-50" />
-                  <button onClick={() => handleGenerate(i)} disabled={isGenerating || !imageModel}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50">
-                    <Zap className="w-3.5 h-3.5" />Generate Scene Image
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
