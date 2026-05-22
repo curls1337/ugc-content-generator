@@ -288,7 +288,7 @@ export default function GeneratePage() {
           )}
 
           {/* Progress */}
-          {(isGenerating || jobStatus) && <ProgressCard jobStatus={jobStatus!} elapsedSeconds={elapsedSeconds} label="Image Generation" />}
+          {(isGenerating || jobStatus) && jobStatus && <ProgressCard jobStatus={jobStatus} elapsedSeconds={elapsedSeconds} label="Image Generation" />}
 
           {/* Generated images grid */}
           {generatedImages.length > 0 && (
@@ -390,7 +390,7 @@ export default function GeneratePage() {
           </div>
 
           {/* Progress */}
-          {(isGenerating || jobStatus) && <ProgressCard jobStatus={jobStatus!} elapsedSeconds={elapsedSeconds} label="Video Generation" />}
+          {(isGenerating || jobStatus) && jobStatus && <ProgressCard jobStatus={jobStatus} elapsedSeconds={elapsedSeconds} label="Video Generation" />}
 
           {jobStatus?.status === 'success' && (
             <button onClick={() => navigate('/gallery')} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm">
