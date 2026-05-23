@@ -31,6 +31,10 @@ export class ScenarioClient {
   /**
    * Start an image generation job.
    * POST /v1/generate/custom/{modelId}
+   * 
+   * For product preservation:
+   * - Models with 'image' input (FLUX): use startImageAssetId + strength (0.3-0.5 preserves product)
+   * - Models with 'referenceImages' input (Gemini, Seedream): use referenceImageAssetIds
    */
   async generateImage(params: {
     modelId: string;
@@ -39,6 +43,8 @@ export class ScenarioClient {
     width: number;
     height: number;
     startImageAssetId?: string;
+    referenceImageAssetIds?: string[];
+    strength?: number;
   }): Promise<{ jobId: string }> {
     const body: Record<string, unknown> = {
       prompt: params.prompt,
@@ -47,8 +53,17 @@ export class ScenarioClient {
       height: params.height,
     };
 
+    // For FLUX-type models: use 'image' + 'strength' for img2img with product preservation
     if (params.startImageAssetId) {
       body.image = params.startImageAssetId;
+      // Lower strength = more preservation of original image (product stays same)
+      // 0.3-0.5 is ideal for keeping product but changing scene
+      body.strength = params.strength ?? 0.45;
+    }
+
+    // For Gemini/Seedream-type models: use 'referenceImages' array
+    if (params.referenceImageAssetIds && params.referenceImageAssetIds.length > 0) {
+      body.referenceImages = params.referenceImageAssetIds;
     }
 
     const response = await this.request('POST', `/v1/generate/custom/${params.modelId}`, body);
