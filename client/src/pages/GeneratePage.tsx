@@ -67,6 +67,7 @@ export default function GeneratePage() {
   const [loadingModels, setLoadingModels] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [sceneRefs, setSceneRefs] = useState<Record<number, string>>({}); // per-scene reference image
+  const [sceneJobs, setSceneJobs] = useState<Record<number, { jobId: string; status: string; progress: number; error?: string }>>({}); // per-scene job status
 
   const {
     productData, selectedImages, mode, videoDuration, voiceLanguage, voiceStyle,
@@ -138,30 +139,66 @@ export default function GeneratePage() {
     setIsGeneratingPrompts(false);
   };
 
-  // Generate content
+  // Generate content (per scene, non-blocking)
   const handleGenerate = async (promptIdx: number) => {
     const prompt = prompts[promptIdx]; if (!prompt) return;
-    setGenerateError(null); setIsGenerating(true); setJobStatus(null); setActiveJobId(null);
-    startTimeRef.current = Date.now(); setElapsedSeconds(0);
+    setGenerateError(null);
+
+    // Update scene job status
+    setSceneJobs(prev => ({ ...prev, [promptIdx]: { jobId: '', status: 'starting', progress: 0 } }));
+
     let data: { success: boolean; jobId?: string; error?: string };
 
     if (step === 2) {
       const refImg = sceneRefs[promptIdx] || selectedImages[0] || '';
-      addLog('info', `IMAGE gen | ${imageModel} | ref: ${refImg.slice(0, 40)}...`);
+      addLog('info', `Scene ${promptIdx + 1} IMAGE gen | ${imageModel}`);
       data = await generateImage({ prompt, referenceImages: refImg ? [refImg] : selectedImages.slice(0, 1), modelId: imageModel, numOutputs: 1, width: 1080, height: 1920, scenarioApiKey, scenarioApiSecret });
     } else {
       const ref = selectedGeneratedImage ? [selectedGeneratedImage] : selectedImages.slice(0, 1);
       let enhanced = prompt;
       if (voiceLanguage !== 'none') enhanced += `\n\nCharacter speaks ${voiceLanguage === 'id' ? 'Bahasa Indonesia' : 'English'} naturally.`;
-      addLog('info', `VIDEO gen | ${videoModel} | ${videoDuration}s`);
+      addLog('info', `Scene ${promptIdx + 1} VIDEO gen | ${videoModel} | ${videoDuration}s`);
       data = await generateVideo({ prompt: enhanced, referenceImages: ref, modelId: videoModel, duration: videoDuration, aspectRatio: '9:16', scenarioApiKey, scenarioApiSecret });
     }
 
-    if (!data.success) { addLog('error', data.error || ''); setGenerateError(data.error || 'Failed'); setIsGenerating(false); return; }
-    addLog('success', `Job: ${data.jobId}`);
-    setActiveJobId(data.jobId!);
-    setJobStatus({ jobId: data.jobId!, status: 'queued', progress: 0, assetIds: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    startPolling(data.jobId!);
+    if (!data.success) {
+      addLog('error', `Scene ${promptIdx + 1} failed: ${data.error}`);
+      setSceneJobs(prev => ({ ...prev, [promptIdx]: { jobId: '', status: 'failed', progress: 0, error: data.error } }));
+      return;
+    }
+
+    addLog('success', `Scene ${promptIdx + 1} job: ${data.jobId}`);
+    const jobId = data.jobId!;
+    setSceneJobs(prev => ({ ...prev, [promptIdx]: { jobId, status: 'queued', progress: 0 } }));
+
+    // Start polling this specific scene job
+    const pollScene = async () => {
+      const interval = setInterval(async () => {
+        try {
+          const pollData = await pollJobApi(jobId, scenarioApiKey, scenarioApiSecret);
+          if (!pollData.success || !pollData.job) return;
+          const job = pollData.job;
+          setSceneJobs(prev => ({ ...prev, [promptIdx]: { jobId, status: job.status, progress: job.progress } }));
+
+          if (job.status === 'success' || job.status === 'failed' || job.status === 'canceled') {
+            clearInterval(interval);
+            if (job.status === 'failed') {
+              setSceneJobs(prev => ({ ...prev, [promptIdx]: { jobId, status: 'failed', progress: 0, error: job.error || 'Failed' } }));
+            }
+            addLog(job.status === 'success' ? 'success' : 'error', `Scene ${promptIdx + 1}: ${job.status}`);
+          }
+        } catch {}
+      }, POLL_INTERVAL_MS);
+    };
+    pollScene();
+  };
+
+  // Generate ALL scenes at once
+  const handleGenerateAll = () => {
+    prompts.forEach((_, i) => {
+      // Stagger by 500ms to avoid rate limits
+      setTimeout(() => handleGenerate(i), i * 500);
+    });
   };
 
   if (!productData) return null;
@@ -263,22 +300,39 @@ export default function GeneratePage() {
               <h3 className="text-xs font-semibold text-zinc-300 uppercase tracking-wider">Scene Prompts</h3>
               <span className="text-[10px] text-zinc-500">Product preserved • Character included</span>
             </div>
-            <button onClick={handleGeneratePrompts} disabled={isGeneratingPrompts || isGenerating}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium disabled:opacity-50">
-              {isGeneratingPrompts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {prompts.length > 0 ? 'Regenerate Scene Prompts' : 'Generate Scene Prompts'}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handleGeneratePrompts} disabled={isGeneratingPrompts || isGenerating}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium disabled:opacity-50">
+                {isGeneratingPrompts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {prompts.length > 0 ? 'Regenerate Prompts' : 'Generate Prompts'}
+              </button>
+              {prompts.length > 0 && (
+                <button onClick={handleGenerateAll} disabled={!imageModel}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium disabled:opacity-50">
+                  <Zap className="w-4 h-4" />Generate All
+                </button>
+              )}
+            </div>
           </div>
 
           {prompts.length > 0 && (
             <div className="space-y-3">
               {prompts.map((p, i) => {
                 const refImg = sceneRefs[i] || selectedImages[0] || '';
+                const job = sceneJobs[i];
+                const isRunning = job && (job.status === 'queued' || job.status === 'processing' || job.status === 'starting');
+                const isDone = job?.status === 'success';
+                const isFailed = job?.status === 'failed';
                 return (
-                  <div key={i} className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-3">
+                  <div key={i} className={`rounded-xl border bg-surface p-4 space-y-3 ${isDone ? 'border-emerald-500/30' : isFailed ? 'border-red-500/30' : 'border-zinc-800'}`}>
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-zinc-500">SCENE {i + 1}</span>
-                      <span className="text-[10px] text-zinc-600">{p.length} chars</span>
+                      <div className="flex items-center gap-2">
+                        {isRunning && <span className="flex items-center gap-1 text-[10px] text-accent"><Loader2 className="w-3 h-3 animate-spin" />{Math.round((job.progress || 0) * 100)}%</span>}
+                        {isDone && <span className="flex items-center gap-1 text-[10px] text-emerald-400"><CheckCircle2 className="w-3 h-3" />Done</span>}
+                        {isFailed && <span className="flex items-center gap-1 text-[10px] text-red-400"><AlertCircle className="w-3 h-3" />Failed</span>}
+                        <span className="text-[10px] text-zinc-600">{p.length} chars</span>
+                      </div>
                     </div>
 
                     {/* Reference image selector */}
@@ -297,20 +351,27 @@ export default function GeneratePage() {
                       </div>
                     </div>
 
-                    <textarea value={p} onChange={e => { const u = [...prompts]; u[i] = e.target.value; setPrompts(u); }} rows={2} disabled={isGenerating}
+                    <textarea value={p} onChange={e => { const u = [...prompts]; u[i] = e.target.value; setPrompts(u); }} rows={2} disabled={isRunning}
                       className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-[11px] leading-relaxed resize-y disabled:opacity-50" />
-                    <button onClick={() => handleGenerate(i)} disabled={isGenerating || !imageModel}
-                      className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-50">
-                      <Zap className="w-3.5 h-3.5" />Generate Scene Image
+                    
+                    {/* Per-scene progress bar */}
+                    {isRunning && (
+                      <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                        <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.max(Math.round((job.progress || 0) * 100), 5)}%` }} />
+                      </div>
+                    )}
+
+                    {isFailed && <p className="text-[10px] text-red-400">{job.error}</p>}
+
+                    <button onClick={() => handleGenerate(i)} disabled={isRunning || !imageModel}
+                      className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-white text-xs font-medium disabled:opacity-50 ${isDone ? 'bg-zinc-700 hover:bg-zinc-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                      <Zap className="w-3.5 h-3.5" />{isDone ? 'Regenerate' : 'Generate Scene Image'}
                     </button>
                   </div>
                 );
               })}
             </div>
           )}
-
-          {/* Progress */}
-          {(isGenerating || jobStatus) && jobStatus && <ProgressCard jobStatus={jobStatus} elapsedSeconds={elapsedSeconds} label="Image Generation" />}
 
           {/* Generated images grid */}
           {generatedImages.length > 0 && (
