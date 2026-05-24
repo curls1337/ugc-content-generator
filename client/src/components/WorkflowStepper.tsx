@@ -9,9 +9,8 @@ interface Step {
 const steps: Step[] = [
   { label: 'Scrape', path: '/' },
   { label: 'Select', path: '/select' },
-  { label: 'Character', path: '/character' },
   { label: 'Generate', path: '/generate' },
-  { label: 'View', path: '/gallery' },
+  { label: 'Gallery', path: '/gallery' },
 ];
 
 export default function WorkflowStepper() {

@@ -40,7 +40,7 @@ export default function SelectImagesPage() {
   };
 
   const handleContinue = () => {
-    navigate('/character');
+    navigate('/generate');
   };
 
   // Error state: no images found
