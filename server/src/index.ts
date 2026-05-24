@@ -6,7 +6,7 @@ import { scrapeProduct } from './scrapers';
 import { analyzeProduct } from './llm/analyze-product';
 import { generatePrompts } from './llm/prompt-generator';
 import { generateImages } from './scenario/image-generator';
-import { generateVideo } from './scenario/video-generator';
+import { generateVideo, generateLongVideo, concatVideoSegments, getModelMaxDuration } from './scenario/video-generator';
 import { getAssetUrl } from './scenario/asset-manager';
 import { ScenarioClient } from './scenario/client';
 import { isValidUrl, detectPlatform } from '@shared/utils/index';
@@ -15,6 +15,8 @@ import type {
   PromptRequest,
   ImageGenerateRequest,
   VideoGenerateRequest,
+  LongVideoGenerateRequest,
+  VideoConcatRequest,
   ValidateGeminiRequest,
   ValidateScenarioRequest,
 } from '@shared/api-types';
@@ -167,6 +169,109 @@ app.post('/api/generate/video', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'Video generation failed' });
   }
+});
+
+// POST /api/generate/video-long — Auto-split long video into segments
+app.post('/api/generate/video-long', async (req, res) => {
+  try {
+    const {
+      prompt,
+      referenceImages,
+      modelId,
+      duration,
+      aspectRatio,
+      scenarioApiKey,
+      scenarioApiSecret,
+    } = req.body as LongVideoGenerateRequest;
+
+    if (!prompt || !modelId || !scenarioApiKey || !scenarioApiSecret) {
+      res.status(400).json({
+        success: false,
+        error: 'Prompt, modelId, and Scenario API credentials are required',
+      });
+      return;
+    }
+
+    const maxPerSegment = getModelMaxDuration(modelId);
+
+    // If duration fits in one segment, use normal generation
+    if (duration <= maxPerSegment) {
+      const result = await generateVideo({
+        apiKey: scenarioApiKey,
+        apiSecret: scenarioApiSecret,
+        modelId,
+        prompt,
+        duration,
+        aspectRatio: aspectRatio || '9:16',
+        referenceImages,
+      });
+      res.json({
+        success: true,
+        segments: [duration],
+        segmentJobIds: [result.jobId],
+        totalDuration: duration,
+        maxPerSegment,
+      });
+      return;
+    }
+
+    // Auto-split into multiple segments
+    const result = await generateLongVideo({
+      apiKey: scenarioApiKey,
+      apiSecret: scenarioApiSecret,
+      modelId,
+      prompt,
+      duration,
+      aspectRatio: aspectRatio || '9:16',
+      referenceImages,
+    });
+
+    res.json({
+      success: true,
+      segments: result.segments,
+      segmentJobIds: result.segmentJobIds,
+      totalDuration: result.totalDuration,
+      maxPerSegment: result.maxPerSegment,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'Long video generation failed' });
+  }
+});
+
+// POST /api/generate/video-concat — Concatenate video segments
+app.post('/api/generate/video-concat', async (req, res) => {
+  try {
+    const { assetIds, scenarioApiKey, scenarioApiSecret } = req.body as VideoConcatRequest;
+
+    if (!assetIds?.length || !scenarioApiKey || !scenarioApiSecret) {
+      res.status(400).json({
+        success: false,
+        error: 'assetIds array and Scenario API credentials are required',
+      });
+      return;
+    }
+
+    const result = await concatVideoSegments({
+      apiKey: scenarioApiKey,
+      apiSecret: scenarioApiSecret,
+      assetIds,
+    });
+
+    res.json({ success: true, jobId: result.jobId });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'Video concat failed' });
+  }
+});
+
+// GET /api/video-models/max-duration — Get max duration for a video model
+app.get('/api/video-models/max-duration', (req, res) => {
+  const { modelId } = req.query as { modelId: string };
+  if (!modelId) {
+    res.status(400).json({ success: false, error: 'modelId query parameter is required' });
+    return;
+  }
+  const maxDuration = getModelMaxDuration(modelId);
+  res.json({ success: true, maxDuration, modelId });
 });
 
 // GET /api/jobs/:jobId — Poll job status

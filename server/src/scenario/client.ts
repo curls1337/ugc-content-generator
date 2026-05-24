@@ -184,6 +184,19 @@ export class ScenarioClient {
   }
 
   /**
+   * Concatenate multiple video assets into a single video.
+   * POST /v1/videos/concat
+   * Used for auto-split: generate segments then concat them together.
+   */
+  async concatVideos(assetIds: string[]): Promise<{ jobId: string }> {
+    const body = {
+      assetIds,
+    };
+    const response = await this.request('POST', '/v1/videos/concat', body);
+    return { jobId: response.job?.id ?? response.job?.jobId ?? response.jobId ?? response.id };
+  }
+
+  /**
    * Validate the API credentials by attempting to list models.
    * Returns { valid: true } on success, or { valid: false, error } on failure.
    */

@@ -55,6 +55,33 @@ export interface VideoGenerateRequest {
   scenarioApiSecret: string;
 }
 
+// POST /api/generate/video-long (auto-split + concat)
+export interface LongVideoGenerateRequest {
+  prompt: string;
+  referenceImages: string[];
+  modelId: string;
+  duration: number; // Any duration - will be auto-split
+  aspectRatio: '9:16';
+  scenarioApiKey: string;
+  scenarioApiSecret: string;
+}
+
+export interface LongVideoGenerateResponse {
+  success: boolean;
+  segments?: number[];
+  segmentJobIds?: string[];
+  totalDuration?: number;
+  maxPerSegment?: number;
+  error?: string;
+}
+
+// POST /api/generate/video-concat
+export interface VideoConcatRequest {
+  assetIds: string[];
+  scenarioApiKey: string;
+  scenarioApiSecret: string;
+}
+
 // Shared response for image and video generation
 export interface GenerateResponse {
   success: boolean;
