@@ -147,11 +147,24 @@ export default function GeneratePage() {
       try {
         const d = await pollJobApi(jobId, apiKey, apiSecret);
         if (!d.success || !d.job) return false;
-        setJobs(prev => ({
-          ...prev,
-          [idx]: { ...prev[idx], status: d.job!.status, progress: d.job!.progress },
-        }));
-        if (d.job.status === 'success') {
+        const status = d.job.status;
+        const progress = d.job.progress ?? 0;
+
+        // Log status for visibility
+        setJobs(prev => {
+          const prevJob = prev[idx];
+          // Only add log if status changed
+          const statusChanged = prevJob?.status !== status;
+          const newLogs = statusChanged
+            ? [...prevJob.logs, `[poll] status: ${status}, progress: ${Math.round(progress * 100)}%`]
+            : prevJob.logs;
+          return {
+            ...prev,
+            [idx]: { ...prevJob, status, progress, logs: newLogs },
+          };
+        });
+
+        if (status === 'success') {
           setJobs(prev => ({
             ...prev,
             [idx]: { ...prev[idx], logs: [...prev[idx].logs, '✓ Selesai! Mengambil hasil...'] },
@@ -166,7 +179,7 @@ export default function GeneratePage() {
             }
           }
           return true;
-        } else if (d.job.status === 'failed' || d.job.status === 'canceled') {
+        } else if (status === 'failed' || status === 'canceled') {
           setJobs(prev => ({
             ...prev,
             [idx]: { ...prev[idx], status: 'failed', error: d.job!.error || 'Failed', logs: [...prev[idx].logs, `✗ ${d.job!.error || 'Failed'}`] },
@@ -270,7 +283,7 @@ export default function GeneratePage() {
 
           {scenePrompts.map((prompt, i) => {
             const job = jobs[i];
-            const running = job && ['queued', 'processing', 'starting'].includes(job.status);
+            const running = job && job.status !== 'success' && job.status !== 'failed';
             const done = job?.status === 'success';
             const failed = job?.status === 'failed';
 
