@@ -103,17 +103,13 @@ export default function GeneratePage() {
     const prompt = prompts[idx];
     if (!prompt?.trim()) { setError(`Scene ${idx + 1}: prompt kosong`); return; }
     const refImg = selectedImages[idx];
+
+    // Set initial state with logs
     setJobs(prev => ({
       ...prev,
-      [idx]: { jobId: '', status: 'starting', progress: 0, logs: ['Memulai generate...'] },
+      [idx]: { jobId: '', status: 'starting', progress: 0, logs: ['Memulai generate...', 'Mengirim ke Scenario API...'] },
     }));
     addLog('info', `Scene ${idx + 1}: generating...`);
-
-    // Add log
-    setJobs(prev => ({
-      ...prev,
-      [idx]: { ...prev[idx], logs: [...(prev[idx]?.logs || []), 'Mengirim ke Scenario API...'] },
-    }));
 
     const data = await generateImage({
       prompt: `${prompt}. Keep the product EXACTLY as shown in the reference image - same colors, shape, label, design.`,
@@ -133,48 +129,61 @@ export default function GeneratePage() {
 
     setJobs(prev => ({
       ...prev,
-      [idx]: { ...prev[idx], jobId: data.jobId!, status: 'queued', logs: [...(prev[idx]?.logs || []), `Job: ${data.jobId!.slice(0, 16)}... Polling...`] },
+      [idx]: { ...prev[idx], jobId: data.jobId!, status: 'processing', progress: 0.05, logs: [...(prev[idx]?.logs || []), `Job: ${data.jobId!.slice(0, 16)}... Polling...`] },
     }));
 
-    // Start polling
-    pollJob(idx, data.jobId!);
+    // Start polling with credentials captured now
+    startPolling(idx, data.jobId!, scenarioApiKey, scenarioApiSecret);
   };
 
-  // Poll job and resolve result
-  const pollJob = (idx: number, jobId: string) => {
-    const interval = setInterval(async () => {
+  // Poll job and resolve result — immediate first poll + interval
+  const startPolling = (idx: number, jobId: string, apiKey: string, apiSecret: string) => {
+    const doPoll = async () => {
       try {
-        const d = await pollJobApi(jobId, scenarioApiKey, scenarioApiSecret);
-        if (!d.success || !d.job) return;
+        const d = await pollJobApi(jobId, apiKey, apiSecret);
+        if (!d.success || !d.job) return false;
         setJobs(prev => ({
           ...prev,
           [idx]: { ...prev[idx], status: d.job!.status, progress: d.job!.progress },
         }));
         if (d.job.status === 'success') {
-          clearInterval(interval);
           setJobs(prev => ({
             ...prev,
             [idx]: { ...prev[idx], logs: [...prev[idx].logs, '✓ Selesai! Mengambil hasil...'] },
           }));
           // Resolve asset URL
           if (d.job.assetIds[0]) {
-            const asset = await getAsset(d.job.assetIds[0], scenarioApiKey, scenarioApiSecret);
+            const asset = await getAsset(d.job.assetIds[0], apiKey, apiSecret);
             if (asset.success && asset.url) {
               setJobs(prev => ({
                 ...prev,
-                [idx]: { ...prev[idx], resultUrl: asset.url, logs: [...prev[idx].logs, `✓ Hasil siap!`] },
+                [idx]: { ...prev[idx], resultUrl: asset.url, logs: [...prev[idx].logs, '✓ Hasil siap!'] },
               }));
             }
           }
+          return true; // done
         } else if (d.job.status === 'failed' || d.job.status === 'canceled') {
-          clearInterval(interval);
           setJobs(prev => ({
             ...prev,
             [idx]: { ...prev[idx], status: 'failed', error: d.job!.error || 'Failed', logs: [...prev[idx].logs, `✗ ${d.job!.error || 'Failed'}`] },
           }));
+          return true; // done
         }
-      } catch {}
-    }, POLL_MS);
+        return false; // keep polling
+      } catch {
+        return false;
+      }
+    };
+
+    // Immediate first poll
+    doPoll().then(done => {
+      if (done) return;
+      // Continue polling every POLL_MS
+      const interval = setInterval(async () => {
+        const finished = await doPoll();
+        if (finished) clearInterval(interval);
+      }, POLL_MS);
+    });
   };
 
   if (!productData) return null;
