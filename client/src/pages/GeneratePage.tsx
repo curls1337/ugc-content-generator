@@ -1,65 +1,56 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Sparkles, Loader2, AlertCircle, CheckCircle2,
-  Wand2, Zap, ArrowRight, Layers, Camera, Video,
-  Scissors, Link2, ImageIcon,
+  Zap, User, Plus, ImageIcon,
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import {
-  generatePrompts, generateImage, generateVideo, generateLongVideo,
-  concatVideos, pollJob as pollJobApi, listModels, getModelMaxDuration,
-  getAsset,
+  generatePrompts, generateImage, pollJob as pollJobApi, getAsset, listModels,
 } from '../api/client';
 import { addLog } from '../components/LogPanel';
 
 const POLL_MS = 6000;
+
+interface SavedCharacter {
+  id: string;
+  name: string;
+  image: string;
+  description: string;
+  createdAt: number;
+}
 
 type SceneJob = {
   jobId: string;
   status: string;
   progress: number;
   error?: string;
-  resultUrl?: string; // resolved asset URL
-  logs: string[]; // per-scene log messages
-};
-
-type SegmentState = {
-  jobId: string;
-  status: string;
-  progress: number;
-  assetId?: string;
-  error?: string;
+  resultUrl?: string;
+  logs: string[];
 };
 
 export default function GeneratePage() {
   const navigate = useNavigate();
+
+  // Characters from localStorage
+  const [characters, setCharacters] = useState<SavedCharacter[]>(() => {
+    try { return JSON.parse(localStorage.getItem('ugc_characters') || '[]'); } catch { return []; }
+  });
+
+  // Per-image prompts (user can edit each)
+  const [prompts, setPrompts] = useState<Record<number, string>>({});
+  // Per-image generation jobs
+  const [jobs, setJobs] = useState<Record<number, SceneJob>>({});
+  // Model selection
   const [imageModel, setImageModel] = useState('model_google-gemini-pro-image-editing');
-  const [videoModel, setVideoModel] = useState('model_p-video');
   const [models, setModels] = useState<any[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
-
-  // Pipeline state
-  const [pipeline, setPipeline] = useState<'setup' | 'background' | 'compose' | 'video'>('setup');
-  const [bgPrompts, setBgPrompts] = useState<string[]>([]);
-  const [bgJobs, setBgJobs] = useState<Record<number, SceneJob>>({});
-  const [composePrompts, setComposePrompts] = useState<string[]>([]);
-  const [composeJobs, setComposeJobs] = useState<Record<number, SceneJob>>({});
-  const [videoJobs, setVideoJobs] = useState<Record<number, SceneJob>>({});
-  const [selectedForVideo, setSelectedForVideo] = useState<string[]>([]);
-
-  // Free-form video duration
-  const [videoDuration, setVideoDuration] = useState(15);
-  const [modelMaxDuration, setModelMaxDuration] = useState(10);
+  // Auto-prompt generation
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-split state
-  const [segmentStates, setSegmentStates] = useState<Record<number, Record<number, SegmentState>>>({});
-  const [concatJobs, setConcatJobs] = useState<Record<number, SceneJob>>({});
-
   const {
-    productData, selectedImages, characterImage,
+    productData, selectedImages, characterImage, setCharacterImage,
     geminiKeys, geminiModel, scenarioApiKey, scenarioApiSecret, scenarioKeyValid,
   } = useAppStore();
 
@@ -75,101 +66,57 @@ export default function GeneratePage() {
     }).catch(() => {}).finally(() => setLoadingModels(false));
   }, [scenarioApiKey, scenarioApiSecret]);
 
-  // Fetch model max duration when video model changes
-  useEffect(() => {
-    if (!videoModel) return;
-    getModelMaxDuration(videoModel).then(d => {
-      if (d.success && d.maxDuration) setModelMaxDuration(d.maxDuration);
-    });
-  }, [videoModel]);
-
   const validKeys = geminiKeys.filter(k => k.valid).map(k => k.key);
   const imageModels = models.filter(m => m.capabilities?.some((c: string) => c === 'txt2img' || c === 'img2img'));
-  const videoModels = models.filter(m => m.capabilities?.some((c: string) => c === 'txt2video' || c === 'img2video'));
-  const needsSplit = videoDuration > modelMaxDuration;
-  const segmentCount = needsSplit ? Math.ceil(videoDuration / modelMaxDuration) : 1;
 
-  // Helper: add log to a specific job
-  const addJobLog = (
-    setter: React.Dispatch<React.SetStateAction<Record<number, SceneJob>>>,
-    idx: number,
-    msg: string
-  ) => {
-    setter(prev => {
-      const job = prev[idx];
-      if (!job) return prev;
-      return { ...prev, [idx]: { ...job, logs: [...job.logs, `[${new Date().toLocaleTimeString()}] ${msg}`] } };
-    });
+  // Select character
+  const handleSelectCharacter = (char: SavedCharacter) => {
+    setCharacterImage(char.image === characterImage ? null : char.image);
   };
 
-  // Poll a job, update state, resolve asset URL on success
-  const pollSceneWithResult = useCallback((
-    jobId: string,
-    setter: React.Dispatch<React.SetStateAction<Record<number, SceneJob>>>,
-    idx: number
-  ) => {
-    const interval = setInterval(async () => {
-      try {
-        const d = await pollJobApi(jobId, scenarioApiKey, scenarioApiSecret);
-        if (!d.success || !d.job) return;
-        setter(prev => ({
-          ...prev,
-          [idx]: { ...prev[idx], jobId, status: d.job!.status, progress: d.job!.progress },
-        }));
-        if (d.job.status === 'success') {
-          clearInterval(interval);
-          addJobLog(setter, idx, `✓ Selesai! Asset: ${d.job.assetIds[0]?.slice(0, 12)}...`);
-          // Resolve asset URL
-          if (d.job.assetIds[0]) {
-            const asset = await getAsset(d.job.assetIds[0], scenarioApiKey, scenarioApiSecret);
-            if (asset.success && asset.url) {
-              setter(prev => ({ ...prev, [idx]: { ...prev[idx], resultUrl: asset.url } }));
-            }
-          }
-        } else if (d.job.status === 'failed' || d.job.status === 'canceled') {
-          clearInterval(interval);
-          const errMsg = d.job.error || 'Generation failed';
-          setter(prev => ({ ...prev, [idx]: { ...prev[idx], status: 'failed', error: errMsg } }));
-          addJobLog(setter, idx, `✗ Error: ${errMsg}`);
-        }
-      } catch {}
-    }, POLL_MS);
-    // Initial poll
-    pollJobApi(jobId, scenarioApiKey, scenarioApiSecret).then(d => {
-      if (d.success && d.job) {
-        setter(prev => ({ ...prev, [idx]: { ...prev[idx], status: d.job!.status, progress: d.job!.progress } }));
-      }
-    });
-    return interval;
-  }, [scenarioApiKey, scenarioApiSecret]);
+  // Update prompt for a specific image
+  const setPrompt = (idx: number, text: string) => {
+    setPrompts(prev => ({ ...prev, [idx]: text }));
+  };
 
-  // Generate background prompts (manual)
-  const handleGenBgPrompts = async () => {
+  // Auto-generate prompts for all images via Gemini
+  const handleAutoPrompts = async () => {
     if (!productData) return;
-    setIsGeneratingPrompts(true); setError(null); setBgPrompts([]);
-    addLog('info', 'Generating background prompts...');
+    setIsGeneratingPrompts(true); setError(null);
+    addLog('info', 'Generating prompts via Gemini...');
     const data = await generatePrompts({
       product: productData, selectedImages, mode: 'image',
       geminiKeys: validKeys, geminiModel,
     });
-    if (!data.success) setError(data.error || 'Failed');
-    else setBgPrompts(data.prompts ?? []);
+    if (!data.success) { setError(data.error || 'Failed'); setIsGeneratingPrompts(false); return; }
+    const generated = data.prompts ?? [];
+    const newPrompts: Record<number, string> = {};
+    selectedImages.forEach((_, i) => {
+      newPrompts[i] = generated[i] || generated[0] || '';
+    });
+    setPrompts(newPrompts);
     setIsGeneratingPrompts(false);
   };
 
-  // Generate ONE background image (manual, one at a time)
-  const handleGenBg = async (idx: number) => {
-    const prompt = bgPrompts[idx]; if (!prompt) return;
-    const refImg = selectedImages[idx % selectedImages.length] || selectedImages[0];
-    setBgJobs(prev => ({
+  // Generate ONE image (manual per-card)
+  const handleGenerate = async (idx: number) => {
+    const prompt = prompts[idx];
+    if (!prompt?.trim()) { setError(`Scene ${idx + 1}: prompt kosong`); return; }
+    const refImg = selectedImages[idx];
+    setJobs(prev => ({
       ...prev,
       [idx]: { jobId: '', status: 'starting', progress: 0, logs: ['Memulai generate...'] },
     }));
-    addLog('info', `BG Scene ${idx + 1}: starting`);
-    addJobLog(setBgJobs, idx, 'Mengirim request ke Scenario API...');
+    addLog('info', `Scene ${idx + 1}: generating...`);
+
+    // Add log
+    setJobs(prev => ({
+      ...prev,
+      [idx]: { ...prev[idx], logs: [...(prev[idx]?.logs || []), 'Mengirim ke Scenario API...'] },
+    }));
 
     const data = await generateImage({
-      prompt: `Place this exact product in a new scene: ${prompt}. Keep the product EXACTLY as shown - same colors, shape, label, design. Only change the background/environment.`,
+      prompt: `${prompt}. Keep the product EXACTLY as shown in the reference image - same colors, shape, label, design.`,
       referenceImages: [refImg],
       modelId: imageModel,
       numOutputs: 1, width: 1080, height: 1920,
@@ -177,513 +124,201 @@ export default function GeneratePage() {
     });
 
     if (!data.success) {
-      setBgJobs(prev => ({
+      setJobs(prev => ({
         ...prev,
         [idx]: { ...prev[idx], status: 'failed', error: data.error, logs: [...(prev[idx]?.logs || []), `✗ Error: ${data.error}`] },
       }));
       return;
     }
-    addJobLog(setBgJobs, idx, `Job created: ${data.jobId!.slice(0, 12)}... Polling...`);
-    setBgJobs(prev => ({ ...prev, [idx]: { ...prev[idx], jobId: data.jobId!, status: 'queued' } }));
-    pollSceneWithResult(data.jobId!, setBgJobs, idx);
-  };
 
-  // Generate compose prompts (manual)
-  const handleGenComposePrompts = async () => {
-    if (!productData) return;
-    setIsGeneratingPrompts(true); setError(null); setComposePrompts([]);
-    let charB64: string | undefined, charMime: string | undefined;
-    if (characterImage) {
-      const m = characterImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
-      if (m) { charMime = m[1]; charB64 = m[2]; }
-    }
-    // Use bg results if available, otherwise selected images
-    const refImages = Object.values(bgJobs).filter(j => j.resultUrl).map(j => j.resultUrl!);
-    const data = await generatePrompts({
-      product: productData,
-      selectedImages: refImages.length > 0 ? refImages : selectedImages,
-      mode: 'image', geminiKeys: validKeys, geminiModel,
-      characterImageBase64: charB64, characterImageMime: charMime,
-    });
-    if (!data.success) setError(data.error || 'Failed');
-    else setComposePrompts(data.prompts ?? []);
-    setIsGeneratingPrompts(false);
-  };
-
-  // Generate ONE compose image (manual)
-  const handleGenCompose = async (idx: number) => {
-    const prompt = composePrompts[idx]; if (!prompt) return;
-    const bgResultUrls = Object.values(bgJobs).filter(j => j.resultUrl).map(j => j.resultUrl!);
-    const refImgs = bgResultUrls.length > 0 ? [bgResultUrls[idx % bgResultUrls.length]] : [selectedImages[0]];
-    setComposeJobs(prev => ({
+    setJobs(prev => ({
       ...prev,
-      [idx]: { jobId: '', status: 'starting', progress: 0, logs: ['Memulai compose...'] },
+      [idx]: { ...prev[idx], jobId: data.jobId!, status: 'queued', logs: [...(prev[idx]?.logs || []), `Job: ${data.jobId!.slice(0, 16)}... Polling...`] },
     }));
-    addLog('info', `Compose scene ${idx + 1}`);
-    addJobLog(setComposeJobs, idx, 'Mengirim request ke Scenario API...');
 
-    const data = await generateImage({
-      prompt, referenceImages: refImgs,
-      modelId: 'model_google-gemini-pro-image-editing',
-      numOutputs: 1, width: 1080, height: 1920,
-      scenarioApiKey, scenarioApiSecret,
-    });
-
-    if (!data.success) {
-      setComposeJobs(prev => ({
-        ...prev,
-        [idx]: { ...prev[idx], status: 'failed', error: data.error, logs: [...(prev[idx]?.logs || []), `✗ Error: ${data.error}`] },
-      }));
-      return;
-    }
-    addJobLog(setComposeJobs, idx, `Job created: ${data.jobId!.slice(0, 12)}... Polling...`);
-    setComposeJobs(prev => ({ ...prev, [idx]: { ...prev[idx], jobId: data.jobId!, status: 'queued' } }));
-    pollSceneWithResult(data.jobId!, setComposeJobs, idx);
+    // Start polling
+    pollJob(idx, data.jobId!);
   };
 
-  // Generate ONE video (manual, with auto-split support)
-  const handleGenVideo = async (idx: number) => {
-    const img = selectedForVideo[idx]; if (!img) return;
-    setVideoJobs(prev => ({
-      ...prev,
-      [idx]: { jobId: '', status: 'starting', progress: 0, logs: [`Memulai video ${videoDuration}s...`] },
-    }));
-    addLog('info', `Video ${idx + 1} (${videoDuration}s${needsSplit ? `, ${segmentCount} segments` : ''})`);
-
-    if (!needsSplit) {
-      addJobLog(setVideoJobs, idx, 'Single segment, mengirim request...');
-      const data = await generateVideo({
-        prompt: `Animate this UGC scene into a natural, authentic ${videoDuration}-second vertical video. The person interacts with the product naturally. Smooth camera movement, realistic motion.`,
-        referenceImages: [img], modelId: videoModel,
-        duration: videoDuration, aspectRatio: '9:16',
-        scenarioApiKey, scenarioApiSecret,
-      });
-      if (!data.success) {
-        setVideoJobs(prev => ({
+  // Poll job and resolve result
+  const pollJob = (idx: number, jobId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const d = await pollJobApi(jobId, scenarioApiKey, scenarioApiSecret);
+        if (!d.success || !d.job) return;
+        setJobs(prev => ({
           ...prev,
-          [idx]: { ...prev[idx], status: 'failed', error: data.error, logs: [...(prev[idx]?.logs || []), `✗ Error: ${data.error}`] },
+          [idx]: { ...prev[idx], status: d.job!.status, progress: d.job!.progress },
         }));
-        return;
-      }
-      addJobLog(setVideoJobs, idx, `Job: ${data.jobId!.slice(0, 12)}... Polling...`);
-      setVideoJobs(prev => ({ ...prev, [idx]: { ...prev[idx], jobId: data.jobId!, status: 'queued' } }));
-      pollSceneWithResult(data.jobId!, setVideoJobs, idx);
-    } else {
-      // Multi-segment
-      addJobLog(setVideoJobs, idx, `Auto-split: ${segmentCount} segments × ${modelMaxDuration}s`);
-      const data = await generateLongVideo({
-        prompt: `Animate this UGC scene into a natural, authentic vertical video. The person interacts with the product naturally. Smooth camera movement, realistic motion.`,
-        referenceImages: [img], modelId: videoModel,
-        duration: videoDuration, aspectRatio: '9:16',
-        scenarioApiKey, scenarioApiSecret,
-      });
-
-      if (!data.success) {
-        setVideoJobs(prev => ({
-          ...prev,
-          [idx]: { ...prev[idx], status: 'failed', error: data.error, logs: [...(prev[idx]?.logs || []), `✗ Error: ${data.error}`] },
-        }));
-        return;
-      }
-      addJobLog(setVideoJobs, idx, `${data.segmentJobIds?.length} segment jobs created. Polling...`);
-      const segJobs: Record<number, SegmentState> = {};
-      (data.segmentJobIds ?? []).forEach((jid, si) => {
-        segJobs[si] = { jobId: jid, status: 'queued', progress: 0 };
-      });
-      setSegmentStates(prev => ({ ...prev, [idx]: segJobs }));
-      setVideoJobs(prev => ({ ...prev, [idx]: { ...prev[idx], jobId: 'multi', status: 'processing' } }));
-      pollSegments(idx, data.segmentJobIds ?? []);
-    }
-  };
-
-  // Poll segments then concat
-  const pollSegments = (videoIdx: number, jobIds: string[]) => {
-    const completedAssets: (string | null)[] = new Array(jobIds.length).fill(null);
-    jobIds.forEach((jid, si) => {
-      const interval = setInterval(async () => {
-        try {
-          const d = await pollJobApi(jid, scenarioApiKey, scenarioApiSecret);
-          if (!d.success || !d.job) return;
-          setSegmentStates(prev => ({
+        if (d.job.status === 'success') {
+          clearInterval(interval);
+          setJobs(prev => ({
             ...prev,
-            [videoIdx]: { ...prev[videoIdx], [si]: { jobId: jid, status: d.job!.status, progress: d.job!.progress } },
+            [idx]: { ...prev[idx], logs: [...prev[idx].logs, '✓ Selesai! Mengambil hasil...'] },
           }));
-          if (d.job.status === 'success') {
-            clearInterval(interval);
-            completedAssets[si] = d.job.assetIds[0] || null;
-            addJobLog(setVideoJobs, videoIdx, `Segment ${si + 1} selesai ✓`);
-            if (completedAssets.every(a => a !== null)) {
-              addJobLog(setVideoJobs, videoIdx, 'Semua segment selesai, memulai concat...');
-              handleConcat(videoIdx, completedAssets.filter(Boolean) as string[]);
+          // Resolve asset URL
+          if (d.job.assetIds[0]) {
+            const asset = await getAsset(d.job.assetIds[0], scenarioApiKey, scenarioApiSecret);
+            if (asset.success && asset.url) {
+              setJobs(prev => ({
+                ...prev,
+                [idx]: { ...prev[idx], resultUrl: asset.url, logs: [...prev[idx].logs, `✓ Hasil siap!`] },
+              }));
             }
-          } else if (d.job.status === 'failed' || d.job.status === 'canceled') {
-            clearInterval(interval);
-            addJobLog(setVideoJobs, videoIdx, `✗ Segment ${si + 1} gagal: ${d.job.error}`);
-            setVideoJobs(prev => ({ ...prev, [videoIdx]: { ...prev[videoIdx], status: 'failed', error: `Segment ${si + 1}: ${d.job!.error}` } }));
           }
-        } catch {}
-      }, POLL_MS);
-    });
-  };
-
-  // Concat segments
-  const handleConcat = async (videoIdx: number, assetIds: string[]) => {
-    setConcatJobs(prev => ({ ...prev, [videoIdx]: { jobId: '', status: 'starting', progress: 0, logs: [] } }));
-    setVideoJobs(prev => ({ ...prev, [videoIdx]: { ...prev[videoIdx], jobId: 'concat', status: 'processing', progress: 0.9 } }));
-    const data = await concatVideos({ assetIds, scenarioApiKey, scenarioApiSecret });
-    if (!data.success) {
-      addJobLog(setVideoJobs, videoIdx, `✗ Concat gagal: ${data.error}`);
-      setVideoJobs(prev => ({ ...prev, [videoIdx]: { ...prev[videoIdx], status: 'failed', error: data.error } }));
-      return;
-    }
-    addJobLog(setVideoJobs, videoIdx, `Concat job: ${data.jobId!.slice(0, 12)}...`);
-    pollSceneWithResult(data.jobId!, setVideoJobs, videoIdx);
+        } else if (d.job.status === 'failed' || d.job.status === 'canceled') {
+          clearInterval(interval);
+          setJobs(prev => ({
+            ...prev,
+            [idx]: { ...prev[idx], status: 'failed', error: d.job!.error || 'Failed', logs: [...prev[idx].logs, `✗ ${d.job!.error || 'Failed'}`] },
+          }));
+        }
+      } catch {}
+    }, POLL_MS);
   };
 
   if (!productData) return null;
 
-  // Collect bg result URLs for use in compose/video steps
-  const bgResultUrls = Object.values(bgJobs).filter(j => j.resultUrl).map(j => j.resultUrl!);
-  const composeResultUrls = Object.values(composeJobs).filter(j => j.resultUrl).map(j => j.resultUrl!);
-
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-zinc-100">UGC Studio</h1>
-          <p className="text-xs text-zinc-400 mt-0.5">{productData.title.slice(0, 50)}...</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {selectedImages[0] && <img src={selectedImages[0]} alt="" className="w-8 h-8 rounded-lg object-cover border border-zinc-700" />}
-          {characterImage && <img src={characterImage} alt="" className="w-8 h-8 rounded-lg object-cover border border-indigo-500/50" />}
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-zinc-100">Generate</h1>
+        <p className="text-sm text-zinc-400 mt-0.5">{productData.title.slice(0, 60)}</p>
       </div>
 
-      {/* Pipeline tabs */}
-      <div className="grid grid-cols-4 gap-1.5 p-1 rounded-xl bg-zinc-900 border border-zinc-800">
-        {[
-          { id: 'setup', icon: Wand2, label: 'Setup' },
-          { id: 'background', icon: Layers, label: 'Background' },
-          { id: 'compose', icon: Camera, label: 'Compose' },
-          { id: 'video', icon: Video, label: 'Video' },
-        ].map(t => (
-          <button key={t.id} onClick={() => setPipeline(t.id as any)}
-            className={`flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-medium transition-all ${pipeline === t.id ? 'bg-accent text-white shadow-lg' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'}`}>
-            <t.icon className="w-3.5 h-3.5" />{t.label}
+      {/* Character Selection */}
+      <div className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-zinc-200">Pilih Karakter</h3>
+          <button onClick={() => navigate('/character')} className="text-[10px] text-accent hover:underline flex items-center gap-1">
+            <Plus className="w-3 h-3" />Buat Baru
           </button>
-        ))}
+        </div>
+
+        {characters.length === 0 ? (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700">
+            <User className="w-8 h-8 text-zinc-600" />
+            <div>
+              <p className="text-xs text-zinc-400">Belum ada karakter.</p>
+              <button onClick={() => navigate('/character')} className="text-[10px] text-accent hover:underline">Buat karakter dulu →</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {characters.map(char => {
+              const active = characterImage === char.image;
+              return (
+                <button key={char.id} onClick={() => handleSelectCharacter(char)}
+                  className={`shrink-0 w-16 text-center transition-all ${active ? 'opacity-100' : 'opacity-50 hover:opacity-80'}`}>
+                  <div className={`w-16 h-20 rounded-lg overflow-hidden border-2 ${active ? 'border-accent ring-2 ring-accent/30' : 'border-zinc-700'}`}>
+                    <img src={char.image} alt={char.name} className="w-full h-full object-cover" />
+                  </div>
+                  <p className="text-[9px] text-zinc-300 mt-1 truncate">{char.name}</p>
+                  {active && <p className="text-[8px] text-accent font-bold">ACTIVE</p>}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* SETUP */}
-      {pipeline === 'setup' && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-zinc-800 bg-surface p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-zinc-200">Image Generation Model</h3>
-            <select value={imageModel} onChange={e => setImageModel(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm">
-              {imageModels.map(m => <option key={m.id} value={m.id}>{m.name} {m.access === 0 ? '✅' : m.access === 25 ? '⚡' : '👑'}</option>)}
-            </select>
-            <h3 className="text-sm font-semibold text-zinc-200 pt-2">Video Generation Model</h3>
-            <select value={videoModel} onChange={e => setVideoModel(e.target.value)} className="w-full px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm">
-              {videoModels.map(m => <option key={m.id} value={m.id}>{m.name} {m.access === 0 ? '✅' : m.access === 25 ? '⚡' : '👑'}</option>)}
-            </select>
+      {/* Model selection (compact) */}
+      <div className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-zinc-200">Model</h3>
+        <select value={imageModel} onChange={e => setImageModel(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm">
+          {imageModels.map(m => (
+            <option key={m.id} value={m.id}>{m.name} {m.access === 0 ? '✅' : m.access === 25 ? '⚡' : '👑'}</option>
+          ))}
+        </select>
+      </div>
 
-            {/* Free-form video duration */}
-            <div className="space-y-2 pt-2">
-              <h3 className="text-sm font-semibold text-zinc-200">Video Duration</h3>
-              <div className="flex items-center gap-3">
-                <input type="number" min={3} max={120} value={videoDuration}
-                  onChange={e => setVideoDuration(Math.max(3, Math.min(120, parseInt(e.target.value) || 3)))}
-                  className="w-24 px-3 py-2.5 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-sm text-center" />
-                <span className="text-sm text-zinc-400">detik</span>
-                <div className="flex gap-1.5 ml-auto">
-                  {[5, 10, 15, 30, 60].map(d => (
-                    <button key={d} onClick={() => setVideoDuration(d)}
-                      className={`px-2.5 py-1.5 rounded-md text-xs font-medium ${videoDuration === d ? 'bg-accent text-white' : 'bg-bg border border-zinc-700 text-zinc-400 hover:text-zinc-200'}`}>
-                      {d}s
-                    </button>
-                  ))}
+      {/* Auto-generate prompts button */}
+      <button onClick={handleAutoPrompts} disabled={isGeneratingPrompts || !validKeys.length}
+        className="w-full py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+        {isGeneratingPrompts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+        {Object.keys(prompts).length > 0 ? 'Re-generate Prompts (AI)' : 'Auto-Generate Prompts (AI)'}
+      </button>
+
+      {/* Image list with per-image prompt + generate */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-semibold text-zinc-200">Gambar Produk ({selectedImages.length})</h3>
+
+        {selectedImages.map((imgUrl, i) => {
+          const job = jobs[i];
+          const running = job && ['queued', 'processing', 'starting'].includes(job.status);
+          const done = job?.status === 'success';
+          const failed = job?.status === 'failed';
+          const prompt = prompts[i] || '';
+
+          return (
+            <div key={i} className={`rounded-xl border p-4 space-y-3 ${done ? 'border-emerald-500/30 bg-emerald-500/5' : failed ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 bg-surface'}`}>
+              {/* Image + prompt */}
+              <div className="flex gap-3">
+                <img src={imgUrl} alt={`Product ${i + 1}`}
+                  className="w-20 h-20 rounded-lg object-cover border border-zinc-700 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-zinc-500">SCENE {i + 1}</span>
+                    {running && <span className="text-[10px] text-accent flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{Math.round((job.progress || 0) * 100)}%</span>}
+                    {done && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                    {failed && <AlertCircle className="w-4 h-4 text-red-400" />}
+                  </div>
+                  <textarea
+                    value={prompt}
+                    onChange={e => setPrompt(i, e.target.value)}
+                    placeholder="Tulis prompt untuk gambar ini... (atau klik Auto-Generate di atas)"
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-[11px] resize-y placeholder-zinc-600"
+                  />
                 </div>
               </div>
-              {needsSplit && (
-                <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 flex items-start gap-2">
-                  <Scissors className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Auto-Split Aktif</p>
-                    <p className="mt-0.5 text-blue-300/80">
-                      Model max {modelMaxDuration}s. Video {videoDuration}s → <span className="font-bold">{segmentCount} segment</span> + concat otomatis.
-                    </p>
+
+              {/* Progress bar */}
+              {running && (
+                <div className="w-full h-1.5 rounded-full bg-zinc-800">
+                  <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.max((job.progress || 0) * 100, 5)}%` }} />
+                </div>
+              )}
+
+              {/* Generate button */}
+              {!running && (
+                <button onClick={() => handleGenerate(i)} disabled={!prompt.trim() || !scenarioKeyValid}
+                  className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40 flex items-center justify-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5" />{done ? 'Regenerate' : failed ? 'Retry' : 'Generate'}
+                </button>
+              )}
+
+              {/* Log proses */}
+              {job?.logs && job.logs.length > 0 && (
+                <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 max-h-20 overflow-y-auto">
+                  {job.logs.map((log, li) => (
+                    <p key={li} className="text-[9px] text-zinc-400 font-mono leading-relaxed">{log}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Error */}
+              {job?.error && (
+                <p className="text-[10px] text-red-400 bg-red-500/10 p-2 rounded-lg">{job.error}</p>
+              )}
+
+              {/* Result image */}
+              {job?.resultUrl && (
+                <div className="rounded-lg overflow-hidden border border-emerald-500/30">
+                  <img src={job.resultUrl} alt={`Result ${i + 1}`} className="w-full max-h-72 object-contain bg-zinc-900" />
+                  <div className="px-2 py-1 bg-emerald-500/10 text-[9px] text-emerald-300 text-center">
+                    ✓ Hasil generate berhasil
                   </div>
                 </div>
               )}
-              {!needsSplit && <p className="text-[10px] text-zinc-500">Model max: {modelMaxDuration}s — single generation.</p>}
             </div>
+          );
+        })}
+      </div>
 
-            {!characterImage && (
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
-                ⚠️ No character. <button onClick={() => navigate('/character')} className="underline font-medium">Go to Characters</button>
-              </div>
-            )}
-          </div>
-          <button onClick={() => setPipeline('background')} disabled={!scenarioKeyValid || !validKeys.length}
-            className="w-full py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-medium text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-            Start Pipeline <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* BACKGROUND REPLACE — manual one-by-one */}
-      {pipeline === 'background' && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-200">Step 1: Product Background</h3>
-              <p className="text-[10px] text-zinc-500 mt-0.5">Generate satu per satu. Klik Generate pada scene yang ingin dibuat.</p>
-            </div>
-            <button onClick={handleGenBgPrompts} disabled={isGeneratingPrompts}
-              className="w-full py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-              {isGeneratingPrompts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {bgPrompts.length > 0 ? 'Regenerate Prompts' : 'Generate Background Prompts'}
-            </button>
-          </div>
-
-          {bgPrompts.map((p, i) => {
-            const job = bgJobs[i];
-            const running = job && ['queued', 'processing', 'starting'].includes(job.status);
-            const done = job?.status === 'success';
-            const failed = job?.status === 'failed';
-            return (
-              <div key={i} className={`rounded-xl border p-4 space-y-2 ${done ? 'border-emerald-500/30 bg-emerald-500/5' : failed ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 bg-surface'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-zinc-500">BG SCENE {i + 1}</span>
-                  {running && <span className="text-[10px] text-accent flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{Math.round((job.progress || 0) * 100)}%</span>}
-                  {done && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                  {failed && <AlertCircle className="w-4 h-4 text-red-400" />}
-                </div>
-                <div className="flex gap-2">
-                  <img src={selectedImages[i % selectedImages.length] || selectedImages[0]} alt="" className="w-14 h-14 rounded-lg object-cover border border-zinc-700 shrink-0" />
-                  <textarea value={p} onChange={e => { const u = [...bgPrompts]; u[i] = e.target.value; setBgPrompts(u); }} rows={2}
-                    className="flex-1 px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-[11px] resize-y" />
-                </div>
-                {running && <div className="w-full h-1 rounded-full bg-zinc-800"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.max((job.progress || 0) * 100, 5)}%` }} /></div>}
-                {!running && (
-                  <button onClick={() => handleGenBg(i)} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center justify-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5" />{done ? 'Regenerate' : failed ? 'Retry' : 'Generate'}
-                  </button>
-                )}
-
-                {/* Log proses */}
-                {job?.logs && job.logs.length > 0 && (
-                  <div className="mt-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800 max-h-24 overflow-y-auto">
-                    {job.logs.map((log, li) => (
-                      <p key={li} className="text-[9px] text-zinc-400 font-mono leading-relaxed">{log}</p>
-                    ))}
-                  </div>
-                )}
-                {/* Error message */}
-                {job?.error && (
-                  <p className="text-[10px] text-red-400 bg-red-500/10 p-2 rounded-lg">{job.error}</p>
-                )}
-                {/* Result image */}
-                {job?.resultUrl && (
-                  <div className="mt-2 rounded-lg overflow-hidden border border-emerald-500/30">
-                    <img src={job.resultUrl} alt={`BG Scene ${i + 1} result`} className="w-full max-h-64 object-contain bg-zinc-900" />
-                    <div className="px-2 py-1 bg-emerald-500/10 text-[9px] text-emerald-300 text-center">
-                      ✓ Hasil generate berhasil
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          <button onClick={() => setPipeline('compose')} className="w-full py-2 rounded-lg border border-zinc-700 text-zinc-400 text-xs hover:text-zinc-200">
-            {bgResultUrls.length > 0 ? 'Next → Compose with Character' : 'Skip → Go to Compose'}
-          </button>
-        </div>
-      )}
-
-      {/* COMPOSE WITH CHARACTER — manual one-by-one */}
-      {pipeline === 'compose' && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-200">Step 2: Compose Scene</h3>
-              <p className="text-[10px] text-zinc-500 mt-0.5">Gabungkan product + character. Generate satu per satu.</p>
-            </div>
-            {characterImage && (
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-                <img src={characterImage} alt="" className="w-8 h-8 rounded-lg object-cover" />
-                <span className="text-[10px] text-indigo-300 font-medium">Character included</span>
-              </div>
-            )}
-            <button onClick={handleGenComposePrompts} disabled={isGeneratingPrompts}
-              className="w-full py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-              {isGeneratingPrompts ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {composePrompts.length > 0 ? 'Regenerate' : 'Generate Compose Prompts'}
-            </button>
-          </div>
-
-          {composePrompts.map((p, i) => {
-            const job = composeJobs[i];
-            const running = job && ['queued', 'processing', 'starting'].includes(job.status);
-            const done = job?.status === 'success';
-            const failed = job?.status === 'failed';
-            return (
-              <div key={i} className={`rounded-xl border p-4 space-y-2 ${done ? 'border-emerald-500/30 bg-emerald-500/5' : failed ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 bg-surface'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-zinc-500">COMPOSE {i + 1}</span>
-                  {running && <span className="text-[10px] text-accent flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" />{Math.round((job.progress || 0) * 100)}%</span>}
-                  {done && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                  {failed && <AlertCircle className="w-4 h-4 text-red-400" />}
-                </div>
-                <textarea value={p} onChange={e => { const u = [...composePrompts]; u[i] = e.target.value; setComposePrompts(u); }} rows={2}
-                  className="w-full px-3 py-2 rounded-lg bg-bg border border-zinc-700 text-zinc-200 text-[11px] resize-y" />
-                {running && <div className="w-full h-1 rounded-full bg-zinc-800"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.max((job.progress || 0) * 100, 5)}%` }} /></div>}
-                {!running && (
-                  <button onClick={() => handleGenCompose(i)} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center justify-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5" />{done ? 'Regenerate' : failed ? 'Retry' : 'Generate'}
-                  </button>
-                )}
-
-                {/* Log proses */}
-                {job?.logs && job.logs.length > 0 && (
-                  <div className="mt-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800 max-h-24 overflow-y-auto">
-                    {job.logs.map((log, li) => (
-                      <p key={li} className="text-[9px] text-zinc-400 font-mono leading-relaxed">{log}</p>
-                    ))}
-                  </div>
-                )}
-                {job?.error && <p className="text-[10px] text-red-400 bg-red-500/10 p-2 rounded-lg">{job.error}</p>}
-                {/* Result image */}
-                {job?.resultUrl && (
-                  <div className="mt-2 rounded-lg overflow-hidden border border-emerald-500/30">
-                    <img src={job.resultUrl} alt={`Compose ${i + 1} result`} className="w-full max-h-64 object-contain bg-zinc-900" />
-                    <div className="px-2 py-1 bg-emerald-500/10 text-[9px] text-emerald-300 text-center">✓ Hasil compose berhasil</div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          <button onClick={() => setPipeline('video')} className="w-full py-2 rounded-lg border border-zinc-700 text-zinc-400 text-xs hover:text-zinc-200">
-            {composeResultUrls.length > 0 ? 'Next → Generate Video' : 'Skip → Go to Video'}
-          </button>
-        </div>
-      )}
-
-      {/* VIDEO — manual one-by-one */}
-      {pipeline === 'video' && (
-        <div className="space-y-4">
-          <div className="rounded-xl border border-zinc-800 bg-surface p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-zinc-200">Step 3: Generate Video</h3>
-            <p className="text-[10px] text-zinc-500">
-              Pilih gambar lalu klik Generate satu per satu ({videoDuration}s).
-              {needsSplit && <span className="text-blue-300 ml-1">Auto-split: {segmentCount}×{modelMaxDuration}s + concat</span>}
-            </p>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-zinc-500">Duration:</span>
-              <input type="number" min={3} max={120} value={videoDuration}
-                onChange={e => setVideoDuration(Math.max(3, Math.min(120, parseInt(e.target.value) || 3)))}
-                className="w-16 px-2 py-1 rounded-md bg-bg border border-zinc-700 text-zinc-200 text-xs text-center" />
-              <span className="text-[10px] text-zinc-500">s</span>
-              {needsSplit && <span className="text-[10px] text-blue-300 flex items-center gap-1"><Scissors className="w-3 h-3" />{segmentCount} seg</span>}
-            </div>
-
-            {/* Image selection */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-medium text-zinc-400">Pilih gambar untuk di-animate:</label>
-              <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                {[...composeResultUrls, ...bgResultUrls, ...selectedImages.slice(0, 3)].filter(Boolean).map((url, i) => {
-                  const sel = selectedForVideo.includes(url);
-                  return (
-                    <button key={i} onClick={() => setSelectedForVideo(prev => sel ? prev.filter(u => u !== url) : [...prev, url])}
-                      className={`relative aspect-[9/16] rounded-lg overflow-hidden border-2 transition-all ${sel ? 'border-accent ring-1 ring-accent/30' : 'border-zinc-700 opacity-50 hover:opacity-100'}`}>
-                      <img src={url} alt="" className="w-full h-full object-cover" />
-                      {sel && <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-accent flex items-center justify-center"><CheckCircle2 className="w-3 h-3 text-white" /></div>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Per-video cards with individual Generate button */}
-          {selectedForVideo.map((img, i) => {
-            const job = videoJobs[i];
-            const running = job && ['queued', 'processing', 'starting'].includes(job.status);
-            const done = job?.status === 'success';
-            const failed = job?.status === 'failed';
-            const segs = segmentStates[i];
-            return (
-              <div key={i} className={`rounded-xl border p-4 space-y-2 ${done ? 'border-emerald-500/30 bg-emerald-500/5' : failed ? 'border-red-500/30 bg-red-500/5' : 'border-zinc-800 bg-surface'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-zinc-500">VIDEO {i + 1}</span>
-                  {running && (
-                    <span className="text-[10px] text-accent flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      {job.jobId === 'multi' ? 'Segments...' : job.jobId === 'concat' ? 'Concat...' : `${Math.round((job.progress || 0) * 100)}%`}
-                    </span>
-                  )}
-                  {done && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                  {failed && <AlertCircle className="w-4 h-4 text-red-400" />}
-                </div>
-                <div className="flex gap-2 items-center">
-                  <img src={img} alt="" className="w-12 h-16 rounded-lg object-cover border border-zinc-700 shrink-0" />
-                  <span className="text-[10px] text-zinc-400">{videoDuration}s {needsSplit ? `(${segmentCount} segments)` : ''}</span>
-                </div>
-                {running && <div className="w-full h-1 rounded-full bg-zinc-800"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.max((job.progress || 0) * 100, 5)}%` }} /></div>}
-
-                {/* Segment progress */}
-                {segs && Object.keys(segs).length > 1 && (
-                  <div className="space-y-1">
-                    {Object.entries(segs).map(([si, seg]) => (
-                      <div key={si} className="flex items-center gap-2">
-                        <span className="text-[9px] text-zinc-500 w-12">Seg {Number(si) + 1}</span>
-                        <div className="flex-1 h-1 rounded-full bg-zinc-800">
-                          <div className={`h-full rounded-full transition-all ${seg.status === 'success' ? 'bg-emerald-500' : seg.status === 'failed' ? 'bg-red-500' : 'bg-accent'}`}
-                            style={{ width: `${seg.status === 'success' ? 100 : Math.max(seg.progress * 100, 5)}%` }} />
-                        </div>
-                        <span className="text-[9px] text-zinc-500 w-8">{seg.status === 'success' ? '✓' : seg.status === 'failed' ? '✗' : `${Math.round(seg.progress * 100)}%`}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {!running && !done && (
-                  <button onClick={() => handleGenVideo(i)} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center justify-center gap-1.5">
-                    <Video className="w-3.5 h-3.5" />{failed ? 'Retry' : 'Generate Video'}
-                  </button>
-                )}
-                {/* Log proses */}
-                {job?.logs && job.logs.length > 0 && (
-                  <div className="mt-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800 max-h-24 overflow-y-auto">
-                    {job.logs.map((log, li) => (
-                      <p key={li} className="text-[9px] text-zinc-400 font-mono leading-relaxed">{log}</p>
-                    ))}
-                  </div>
-                )}
-                {job?.error && <p className="text-[10px] text-red-400 bg-red-500/10 p-2 rounded-lg">{job.error}</p>}
-                {/* Result video */}
-                {job?.resultUrl && (
-                  <div className="mt-2 rounded-lg overflow-hidden border border-emerald-500/30">
-                    <video src={job.resultUrl} controls className="w-full max-h-64 bg-zinc-900" />
-                    <div className="px-2 py-1 bg-emerald-500/10 text-[9px] text-emerald-300 text-center">✓ Video berhasil</div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {Object.values(videoJobs).some(j => j.status === 'success') && (
-            <button onClick={() => navigate('/gallery')} className="w-full py-3 rounded-xl bg-emerald-600 text-white font-medium text-sm flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-4 h-4" />View in Gallery
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Error */}
+      {/* Error global */}
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
